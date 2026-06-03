@@ -49,11 +49,14 @@ fi
 # 用户可自行重命名/复制为 "生产"、"测试"、"staging" 等任意环境名。
 cat > "$OUTPUT_FILE" <<'EOF'
 {
+  "git": {
+    "hostname": ""
+  },
   "platforms": {
     "alipay": {
       "default": {
         "appId": "",
-        "identityKeyPath": ""
+        "token": ""
       }
     },
     "douyin": {
@@ -65,9 +68,9 @@ cat > "$OUTPUT_FILE" <<'EOF'
     "weixin": {
       "default": {
         "appId": "",
-        "privateKeyPath": "",
         "envId": "",
-        "serviceName": ""
+        "serviceName": "",
+        "token": ""
       }
     }
   }
@@ -79,5 +82,5 @@ echo ""
 echo "👉 后续步骤："
 echo "   1. 手动编辑该文件，填入各平台实际参数；"
 echo "      或通过 SKILL 的交互式 init 流程由 AI 引导填入。"
-echo "   2. 由于包含敏感信息，建议将其加入 .gitignore："
+echo "   2. 建议将其加入 .gitignore："
 echo "        echo '.mp-release.json' >> .gitignore"

@@ -86,3 +86,27 @@ else
 fi
 
 echo "✅ 安装完成！"
+
+# 检查 GitHub Enterprise 配置并提示
+CONFIG_FILE="./.mp-release.json"
+if [ -f "$CONFIG_FILE" ]; then
+    GHE_HOSTNAME=""
+    if command -v jq >/dev/null 2>&1; then
+        GHE_HOSTNAME="$(jq -r '.git.hostname // ""' "$CONFIG_FILE" 2>/dev/null)"
+    elif command -v python3 >/dev/null 2>&1; then
+        GHE_HOSTNAME="$(python3 -c "
+import json, sys
+try:
+    with open('$CONFIG_FILE', 'r') as f:
+        data = json.load(f)
+    print(data.get('git', {}).get('hostname', '') or '')
+except:
+    print('')
+" 2>/dev/null)"
+    fi
+    if [ -n "$GHE_HOSTNAME" ]; then
+        echo ""
+        echo "💡 检测到 GitHub Enterprise 配置：${GHE_HOSTNAME}"
+        echo "   请确保已执行：gh auth login --hostname ${GHE_HOSTNAME}"
+    fi
+fi

@@ -4,20 +4,19 @@
 
 ## 安装方式
 
-**方式一：软链接到项目（推荐开发/测试时）**
 ```bash
+npx skills add uknowzheng/mp-version-control-skill
+```
+
+或手动安装：
+
+```bash
+# 软链接（开发/测试时）
 mkdir -p .qoder/skills
 ln -s /path/to/mp-version-control-skill .qoder/skills/mp-version-control
-```
 
-**方式二：复制到个人 skills 目录（全局可用）**
-```bash
+# 复制到个人目录（全局可用）
 cp -r /path/to/mp-version-control-skill ~/.qoder/skills/mp-version-control
-```
-
-**方式三：复制到项目 skills 目录（团队共享）**
-```bash
-cp -r /path/to/mp-version-control-skill .qoder/skills/mp-version-control
 ```
 
 ## 前置依赖
@@ -60,27 +59,48 @@ cp -r /path/to/mp-version-control-skill .qoder/skills/mp-version-control
 
 - 文件名：`.mp-release.json`（建议加入 `.gitignore`）
 - 支持同一平台多环境配置（平台 → 环境名 → 参数）
+- `git.hostname`：配置 GitHub 企业版域名（留空则使用默认 github.com）
 
 ```json
 {
+  "git": {
+    "hostname": ""
+  },
   "platforms": {
     "weixin": {
-      "生产": {
+      "prod": {
         "appId": "wx_prod_xxx",
-        "privateKeyPath": "~/.wx/prod.key",
         "envId": "prod-abc",
-        "serviceName": "app-service"
+        "serviceName": "app-service",
+        "token": ""
       },
-      "测试": {
+      "test": {
         "appId": "wx_test_xxx",
-        "privateKeyPath": "~/.wx/test.key",
         "envId": "test-def",
-        "serviceName": "app-service-test"
+        "serviceName": "app-service-test",
+        "token": ""
       }
     }
   }
 }
 ```
+
+### 认证方式
+
+支持两种认证模式，通过 `token` 字段切换：
+
+| 方式 | 适用场景 | 配置 |
+|------|----------|------|
+| 预登录（推荐本地开发） | 本地手动发布 | `token` 留空，预先执行 CLI 登录命令 |
+| Token（推荐 CI/CD） | 自动化流水线 | 在 `token` 字段填入对应平台的认证凭据 |
+
+**各平台 token 含义：**
+
+| 平台 | token 用途 | 预登录命令 |
+|------|-----------|----------|
+| 支付宝 | 传给 `minidev upload --token` | `minidev quickauth` |
+| 抖音 | 传给 `tma upload --token` | `tma login` |
+| 微信 | 传给 `wxcloud login --privateKey` | `wxcloud login` |
 
 ## 完整工作流
 
@@ -111,7 +131,7 @@ AI：引导选择平台、填写参数，生成 .mp-release.json ✅
 AI：创建 release/v1.2.0 分支，推送到远端，切回 master ✅
 
 你：/mp-version-publish
-AI：询问平台(支付宝)、环境(生产)、版本(1.2.0)、描述，执行 minidev upload ✅
+AI：询问平台(支付宝)、环境(prod)、版本(1.2.0)、描述，执行 minidev upload ✅
 
 [灰度验证通过...]
 
@@ -143,8 +163,9 @@ mp-version-control-skill/
 ## 常见问题
 
 | 问题 | 解决方案 |
-|-----|---------|
+|-----|----------|
 | 没有 remote | 先执行 `git remote add origin <url>` |
 | gh 未登录 | 执行 `gh auth login` |
+| 使用 GitHub 企业版 | 在 `.mp-release.json` 中配置 `git.hostname`，并执行 `gh auth login --hostname <域名>` |
 | 平台 CLI 未安装 | AI 会提示对应的 `npm install` 命令 |
 | 工作区有未提交修改 | 先 `git commit` 或 `git stash` |

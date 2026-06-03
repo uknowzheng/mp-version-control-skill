@@ -30,12 +30,12 @@ description: 小程序版本管理与发布工具。创建 release 分支并调�
 
 ## 触发场景
 
-- 用户输入 `/mp-version-setup` 或要求“安装 CLI”、“安装依赖”、“setup”
-- 用户输入 `/mp-version-init` 或要求“初始化配置”、“init”、“配置小程序参数”
-- 用户输入 `/mp-version-release` 或要求"创建 release 分支"、"拉版本"、"开新版本"
-- 用户输入 `/mp-version-publish` 或要求"发布小程序"、"上传支付宝/抖音/微信小程序"
-- 用户输入 `/mp-version-merge` 或要求"合并到主干"、"合回主干"、"创建 PR"
-- 用户输入 `/mp-version-tag` 或要求"打 tag"、"打标签"、"创建版本标签"
+- `/mp-version-setup` 或“安装 CLI”、“setup”
+- `/mp-version-init` 或“初始化配置”、“init”
+- `/mp-version-release` 或“创建 release 分支”、“拉版本”
+- `/mp-version-publish` 或“发布小程序”、“上传”
+- `/mp-version-merge` 或“合并到主干”、“创建 PR”
+- `/mp-version-tag` 或“打 tag”、“打标签”
 - 用户提到 init、release、版本号、上传、发布、merge、tag 等关键词
 
 ---
@@ -44,8 +44,7 @@ description: 小程序版本管理与发布工具。创建 release 分支并调�
 
 ### 触发场景
 
-- 用户输入 `/mp-version-setup`
-- 用户要求“安装 CLI 工具”、“安装依赖”、“setup”
+- `/mp-version-setup` 或“安装 CLI 工具”、“setup”
 
 ### Workflow
 
@@ -60,11 +59,11 @@ bash ${SKILL_DIR}/mp-cli.sh setup --gh --alipay
 
 脚本会自动检测已安装的工具并跳过，只安装缺失的。
 
-3. **反馈结果**：告知用户安装结果，提示下一步可执行 init 初始化配置。
+3. **反馈结果**：告知用户安装结果，提示下一步可执行 init 初始化配置。若 `.mp-release.json` 中配置了 `git.hostname`，额外提示用户执行 `gh auth login --hostname <domain>`。
 
 ### 前置条件
 
-- Node.js 和 npm（用于安装小程序 CLI）、Homebrew（用于安装 gh，macOS）
+- Node.js 和 npm、Homebrew（macOS）
 
 ---
 
@@ -72,8 +71,7 @@ bash ${SKILL_DIR}/mp-cli.sh setup --gh --alipay
 
 ### 触发场景
 
-- 用户要求"初始化小程序配置"、"/init"、"配置平台参数"
-- 项目首次接入本 Skill，需要集中保存各平台认证信息
+- 用户要求“初始化小程序配置”、“/init”、“配置平台参数”；项目首次接入本 Skill
 
 ### 功能说明
 
@@ -81,7 +79,18 @@ bash ${SKILL_DIR}/mp-cli.sh setup --gh --alipay
 
 ### Workflow
 
-#### Step 1：选择要配置的平台
+#### Step 1：询问 GitHub Enterprise 配置
+
+使用 `AskUserQuestion` 询问：
+
+```
+问题：是否使用 GitHub 企业版（GitHub Enterprise）？
+选项：是 / 否
+```
+
+如果是，追问域名（不含 `https://` 前缀，如 `scm.starbucks.com`）。如果否，`hostname` 保留为空字符串。
+
+#### Step 2：选择要配置的平台
 
 使用 `AskUserQuestion` 多选询问：
 
@@ -90,7 +99,7 @@ bash ${SKILL_DIR}/mp-cli.sh setup --gh --alipay
 选项：支付宝 / 抖音 / 微信
 ```
 
-#### Step 2：针对每个平台，询问环境数量与环境名
+#### Step 3：针对每个平台，询问环境数量与环境名
 
 针对每个被选中的平台，先使用 `AskUserQuestion` 询问：
 
@@ -102,20 +111,22 @@ bash ${SKILL_DIR}/mp-cli.sh setup --gh --alipay
 再对每个环境逐个询问其名称（用户自定义，不做固定约束）：
 
 ```
-问题：请输入第 N 个环境的名称（如 生产 / 测试 / staging / default 等）
+问题：请输入第 N 个环境的名称（如 prod / test / staging / default 等）
 ```
 
-#### Step 3：逐环境收集参数
+#### Step 4：逐环境收集参数
 
 针对每个已命名的环境，使用 `AskUserQuestion` 依次收集对应字段：
 
 | 平台 | 必填字段 | 可选字段 |
 | --- | --- | --- |
-| 支付宝（alipay） | `appId`、`identityKeyPath`（密钥文件路径） | — |
-| 抖音（douyin） | `appId` | `token`（如使用 token 认证） |
-| 微信（weixin） | `appId`、`privateKeyPath`、`envId`、`serviceName` | — |
+| 支付宝（alipay） | `appId` | `token` |
+| 抖音（douyin） | `appId` | `token` |
+| 微信（weixin） | `appId`、`envId`、`serviceName` | `token` |
 
-#### Step 4：生成配置文件
+> 💡 `token` 为可选字段，用于 CI/CD 免登录认证。留空则使用预登录会话。
+
+#### Step 5：生成配置文件
 
 先调用脚本生成模板（默认在每个平台下生成 `default` 环境占位），再由 AI 按上一步收集的真实环境名与字段值改写为最终结构：
 
@@ -123,9 +134,9 @@ bash ${SKILL_DIR}/mp-cli.sh setup --gh --alipay
 bash ${SKILL_DIR}/mp-cli.sh init <项目路径>
 ```
 
-#### Step 5：提示加入 .gitignore
+#### Step 6：提示加入 .gitignore
 
-由于 `.mp-release.json` 含敏感信息（密钥路径、AppID、Token 等），必须提醒用户：
+建议将 `.mp-release.json` 加入版本忽略：
 
 ```bash
 echo '.mp-release.json' >> .gitignore
@@ -133,39 +144,42 @@ echo '.mp-release.json' >> .gitignore
 
 ### 配置文件格式
 
-每个平台下按「环境名」分组，环境名由用户自定义（如 `生产`、`测试`、`staging`、`default` 等均可）：
+每个平台下按「环境名」分组，环境名由用户自定义（如 `prod`、`test`、`staging`、`default` 等均可）：
 
 ```json
 {
+  "git": {
+    "hostname": ""
+  },
   "platforms": {
     "alipay": {
-      "生产": {
+      "prod": {
         "appId": "2021000000000000",
-        "identityKeyPath": "~/.alipay/prod_key.txt"
+        "token": ""
       },
-      "测试": {
+      "test": {
         "appId": "2021000000000001",
-        "identityKeyPath": "~/.alipay/test_key.txt"
+        "token": ""
       }
     },
     "douyin": {
-      "生产": {
+      "prod": {
         "appId": "ttxxxxxxx",
         "token": ""
       }
     },
     "weixin": {
-      "生产": {
+      "prod": {
         "appId": "wx_prod_abcdef",
-        "privateKeyPath": "~/.wx/prod.key",
         "envId": "prod-1abc2def",
-        "serviceName": "app-service"
+        "serviceName": "app-service",
+        "token": ""
       },
-      "测试": {
+      "test": {
         "appId": "wx_test_123456",
-        "privateKeyPath": "~/.wx/test.key",
         "envId": "test-3ghi4jkl",
-        "serviceName": "app-service-test"
+        "serviceName": "app-service-test",
+        "token": ""
       }
     }
   }
@@ -176,8 +190,10 @@ echo '.mp-release.json' >> .gitignore
 
 - 文件已存在时脚本会询问是否覆盖；非交互场景可设置 `MP_INIT_OVERWRITE=y`
 - 仅需配置实际使用的平台与环境，未使用的字段可保留为空字符串
-- 同一平台可配置任意多个环境，环境名完全自由（生产/测试/预发/staging/default 等）
-- 强烈建议加入 `.gitignore`，避免敏感信息进入版本库
+- 同一平台可配置任意多个环境，环境名完全自由（prod/test/staging/default 等）
+- `git.hostname`：GitHub 企业版域名（不含 `https://`），留空则使用默认 github.com
+- `token`：可选，用于 CI/CD 免登录认证；留空则依赖各平台 CLI 预登录会话
+- 建议加入 `.gitignore`
 
 ---
 
@@ -255,12 +271,12 @@ bash ${SKILL_DIR}/mp-cli.sh release <版本号>
 
 针对每个选中的平台，读取项目根目录的 `.mp-release.json`：
 
-- 若该平台在配置文件中**仅有一个环境**（如仅一个 `default` 或仅一个 `生产`），直接使用，不再询问
+- 若该平台在配置文件中**仅有一个环境**（如仅一个 `default` 或仅一个 `prod`），直接使用，不再询问
 - 若该平台在配置文件中**存在多个环境**，使用 `AskUserQuestion` 询问：
 
 ```
 问题：要将 <平台名> 发布到哪个环境？
-选项：列出该平台下配置文件中的所有环境名（动态读取，如 生产 / 测试 / staging 等）
+选项：列出该平台下配置文件中的所有环境名（动态读取，如 prod / test / staging 等）
 ```
 
 - 若配置文件不存在或该平台未配置，询问用户手动输入环境名（可提示先执行「命令零：init」）
@@ -290,6 +306,13 @@ git rev-parse --abbrev-ref HEAD   # 期望输出 release/vA.B.C
 
 > 💡 若用户尚未初始化配置，可建议先执行「命令零：初始化配置（init）」。
 
+**认证优先级：**
+
+- 若配置文件中 `token` 字段有值，自动使用 token 进行免登录认证（CI/CD 模式）
+- 若 `token` 为空，依赖各平台 CLI 的预登录会话（本地模式）
+- 支付宝/抖音：token 作为 `--token` 参数传给 upload 命令
+- 微信：token 作为 `--privateKey` 传给 `wxcloud login` 完成免登录
+
 #### Step 6：检查并执行
 
 针对每个平台依次执行：
@@ -310,14 +333,12 @@ bash ${SKILL_DIR}/mp-cli.sh publish <平台> <环境名> <版本号> "<描述>" 
 npm install -g minidev
 ```
 
-#### 认证方式（二选一）
+#### 认证方式
 
-1. **密钥文件认证**（推荐 CI 使用）：在 [开放平台](https://open.alipay.com) 下载小程序密钥文件，记录路径
-2. **快速授权**（推荐本地）：
+发布前需完成认证（二选一）：
 
-```bash
-minidev quickauth
-```
+- **本地模式**：预先执行 `minidev quickauth`，配置文件中 `token` 留空
+- **CI/CD 模式**：在配置文件中填入 `token`，发布时自动传给 `minidev upload --token`
 
 #### 上传命令
 
@@ -325,8 +346,7 @@ minidev quickauth
 minidev upload \
   --app-id <APPID> \
   --version <版本号> \
-  --description "<描述>" \
-  --identity-key-path <密钥文件路径>
+  --description "<描述>"
 ```
 
 #### 参数说明
@@ -336,13 +356,11 @@ minidev upload \
 | `--app-id` | 支付宝小程序 App ID | `2021000000000000` |
 | `--version` | 版本号 | `1.2.0` |
 | `--description` | 版本描述 | `"修复登录问题"` |
-| `--identity-key-path` | 小程序密钥文件路径 | `~/.alipay/key.txt` |
 
 调用：
 
 ```bash
-bash ${SKILL_DIR}/mp-cli.sh publish alipay 生产 1.2.0 "修复登录问题" \
-  --app-id 2021000000000000 --identity-key-path ~/.alipay/key.txt
+bash ${SKILL_DIR}/mp-cli.sh publish alipay prod 1.2.0 "修复登录问题"
 ```
 
 ---
@@ -355,19 +373,12 @@ bash ${SKILL_DIR}/mp-cli.sh publish alipay 生产 1.2.0 "修复登录问题" \
 npm install -g tt-ide-cli
 ```
 
-#### 登录方式（二选一）
+#### 认证方式
 
-1. **交互式登录**：
+发布前需完成认证（二选一）：
 
-```bash
-tma login
-```
-
-2. **Token 配置**（推荐 CI）：
-
-```bash
-tma set-app-config <appid> --token <token>
-```
+- **本地模式**：预先执行 `tma login`，配置文件中 `token` 留空
+- **CI/CD 模式**：在配置文件中填入 `token`，发布时自动传给 `tma upload --token`
 
 #### 上传命令
 
@@ -388,7 +399,7 @@ tma upload <项目路径> \
 调用：
 
 ```bash
-bash ${SKILL_DIR}/mp-cli.sh publish douyin 生产 1.2.0 "新增首页改版"
+bash ${SKILL_DIR}/mp-cli.sh publish douyin prod 1.2.0 "新增首页改版"
 ```
 
 ---
@@ -403,11 +414,12 @@ bash ${SKILL_DIR}/mp-cli.sh publish douyin 生产 1.2.0 "新增首页改版"
 npm install -g @wxcloud/cli
 ```
 
-#### 登录
+#### 认证方式
 
-```bash
-wxcloud login -a <appId> -k <privateKey路径>
-```
+发布前需完成认证（二选一）：
+
+- **本地模式**：预先执行 `wxcloud login`，配置文件中 `token` 留空
+- **CI/CD 模式**：在配置文件中填入 `token`，发布时自动执行 `wxcloud login --appId <appId> --privateKey <token>`
 
 #### 部署命令
 
@@ -423,8 +435,6 @@ wxcloud run:deploy \
 
 | 参数 | 说明 | 示例 |
 | --- | --- | --- |
-| `-a` / `appId` | 微信小程序 AppID | `wx1234567890abcdef` |
-| `-k` / `privateKey` | 私钥文件路径 | `~/.wx/private.key` |
 | `--envId` | 云开发环境 ID | `prod-1abc2def` |
 | `--serviceName` | 服务名 | `app-service` |
 | `--remark` | 版本备注 | `"v1.2.0 修复 bug"` |
@@ -433,9 +443,7 @@ wxcloud run:deploy \
 调用：
 
 ```bash
-bash ${SKILL_DIR}/mp-cli.sh publish weixin 测试 1.2.0 "v1.2.0 修复 bug" \
-  --appId wx_test_123456 --privateKey ~/.wx/test.key \
-  --envId test-3ghi4jkl --serviceName app-service-test
+bash ${SKILL_DIR}/mp-cli.sh publish weixin test 1.2.0 "v1.2.0 修复 bug"
 ```
 
 ---
@@ -444,8 +452,7 @@ bash ${SKILL_DIR}/mp-cli.sh publish weixin 测试 1.2.0 "v1.2.0 修复 bug" \
 
 ### 触发场景
 
-- 用户说"合回主干"、"合并到 master"、"创建 PR"、"发起合并请求"
-- 灰度完成后需要将 release 分支合入主干
+- 用户说“合回主干”、“合并到 master”、“创建 PR”；灰度完成后需将 release 分支合入主干
 
 ### Workflow
 
@@ -455,8 +462,8 @@ bash ${SKILL_DIR}/mp-cli.sh publish weixin 测试 1.2.0 "v1.2.0 修复 bug" \
 
 ### 前置条件
 
-- 已安装 GitHub CLI：`brew install gh`
-- 已完成认证：`gh auth login`
+- 已安装并认证 GitHub CLI（`gh auth login`）
+- 如使用 GitHub Enterprise：配置 `git.hostname` 并执行 `gh auth login --hostname <domain>`
 
 ---
 
@@ -464,8 +471,7 @@ bash ${SKILL_DIR}/mp-cli.sh publish weixin 测试 1.2.0 "v1.2.0 修复 bug" \
 
 ### 触发场景
 
-- 用户说"打 tag"、"打标签"、"创建版本标签"
-- PR 已合并到主干后
+- 用户说“打 tag”、“打标签”、“创建版本标签”；PR 已合并到主干后
 
 ### Workflow
 
@@ -479,12 +485,7 @@ bash ${SKILL_DIR}/mp-cli.sh publish weixin 测试 1.2.0 "v1.2.0 修复 bug" \
 
 ```text
 用户：帮我发个 1.2.0 版本，发到支付宝和抖音
-
-Skill 执行：
-  1. 询问平台、环境、版本号、描述
-  2. 从 .mp-release.json 读取参数，缺失项再问用户
-  3. 检查 CLI 工具已安装
-  4. 执行 publish 命令并汇总结果
+Skill：询问平台/环境/版本号/描述 → 读取配置 → 检查 CLI → 执行 publish → 汇总结果
 ```
 
 ## 错误处理

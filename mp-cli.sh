@@ -29,7 +29,7 @@ show_help() {
     echo "  bash mp-cli.sh setup --gh --alipay"
     echo "  bash mp-cli.sh init"
     echo "  bash mp-cli.sh release 1.2.0"
-    echo "  bash mp-cli.sh publish alipay 生产 1.2.0 \"修复bug\""
+    echo "  bash mp-cli.sh publish alipay prod 1.2.0 \"修复bug\""
     echo "  bash mp-cli.sh merge 1.2.0"
     echo "  bash mp-cli.sh tag 1.2.0"
 }

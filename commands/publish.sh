@@ -4,13 +4,12 @@
 # 用法：bash publish.sh <平台> <环境名> <版本号> "<描述>" [额外参数...]
 # 项目路径默认为 ./（当前目录）
 # 平台：alipay | douyin | weixin
-# 环境名：用户自定义（如 生产 / 测试 / staging / default 等），需与 .mp-release.json 中一致
+# 环境名：用户自定义（如 prod / test / staging / default 等），需与 .mp-release.json 中一致
 #
 # 示例：
-#   bash publish.sh alipay 生产 1.2.0 "修复登录问题"
-#   bash publish.sh douyin 生产 1.2.0 "新增首页改版"
-#   bash publish.sh weixin 测试 1.2.0 "v1.2.0 修复 bug" \
-#       --appId wxxxx --privateKey ~/.wx/private.key \
+#   bash publish.sh alipay prod 1.2.0 "修复登录问题"
+#   bash publish.sh douyin prod 1.2.0 "新增首页改版"
+#   bash publish.sh weixin test 1.2.0 "v1.2.0 修复 bug" \
 #       --envId test-xxx --serviceName app-service-test
 
 set -e
@@ -109,20 +108,27 @@ if [ -f "$CONFIG_FILE" ]; then
             echo "🌐 使用环境：${PLATFORM} / ${ENV_NAME}"
             case "$PLATFORM" in
                 alipay)
-                    append_config_arg "--app-id"            "$(read_json_field "$CONFIG_FILE" alipay "$ENV_NAME" appId)"
-                    append_config_arg "--identity-key-path" "$(read_json_field "$CONFIG_FILE" alipay "$ENV_NAME" identityKeyPath)"
+                    append_config_arg "--app-id" "$(read_json_field "$CONFIG_FILE" alipay "$ENV_NAME" appId)"
+                    append_config_arg "--token" "$(read_json_field "$CONFIG_FILE" alipay "$ENV_NAME" token)"
                     ;;
                 douyin)
                     append_config_arg "--app-id" "$(read_json_field "$CONFIG_FILE" douyin "$ENV_NAME" appId)"
-                    append_config_arg "--token"  "$(read_json_field "$CONFIG_FILE" douyin "$ENV_NAME" token)"
+                    append_config_arg "--token" "$(read_json_field "$CONFIG_FILE" douyin "$ENV_NAME" token)"
                     ;;
                 weixin)
-                    append_config_arg "--appId"       "$(read_json_field "$CONFIG_FILE" weixin "$ENV_NAME" appId)"
-                    append_config_arg "--privateKey"  "$(read_json_field "$CONFIG_FILE" weixin "$ENV_NAME" privateKeyPath)"
                     append_config_arg "--envId"       "$(read_json_field "$CONFIG_FILE" weixin "$ENV_NAME" envId)"
                     append_config_arg "--serviceName" "$(read_json_field "$CONFIG_FILE" weixin "$ENV_NAME" serviceName)"
                     ;;
             esac
+            # 微信 token 需单独处理（用于 wxcloud login 而非 deploy 参数）
+            if [ "$PLATFORM" = "weixin" ]; then
+                WX_TOKEN="$(read_json_field "$CONFIG_FILE" weixin "$ENV_NAME" token)"
+                WX_APP_ID="$(read_json_field "$CONFIG_FILE" weixin "$ENV_NAME" appId)"
+                if [ -n "$WX_TOKEN" ] && [ -n "$WX_APP_ID" ]; then
+                    echo "🔑 使用 token 认证（CI/CD 模式）"
+                    wxcloud login --appId "$WX_APP_ID" --privateKey "$WX_TOKEN"
+                fi
+            fi
             # 配置文件参数在前，命令行参数在后；后者覆盖前者
             EXTRA_ARGS=("${CONFIG_ARGS[@]}" "${CLI_ARGS[@]}")
         else
@@ -175,22 +181,21 @@ case "$PLATFORM" in
         check_cli "minidev" "npm install -g minidev"
 
         APP_ID="$(get_arg "--app-id" "${EXTRA_ARGS[@]}" || true)"
-        KEY_PATH="$(get_arg "--identity-key-path" "${EXTRA_ARGS[@]}" || true)"
+        TOKEN="$(get_arg "--token" "${EXTRA_ARGS[@]}" || true)"
 
         if [ -z "$APP_ID" ]; then
             echo "❌ 错误：缺少 --app-id"
             exit 1
-        fi
-        if [ -z "$KEY_PATH" ]; then
-            echo "⚠️  未提供 --identity-key-path，将依赖 minidev quickauth 已授权状态"
         fi
 
         CMD=(minidev upload
              --app-id "$APP_ID"
              --version "$VERSION"
              --description "$DESCRIPTION")
-        if [ -n "$KEY_PATH" ]; then
-            CMD+=(--identity-key-path "$KEY_PATH")
+
+        if [ -n "$TOKEN" ]; then
+            CMD+=(--token "$TOKEN")
+            echo "🔑 使用 token 认证（CI/CD 模式）"
         fi
 
         echo "🚀 执行：${CMD[*]}"
@@ -201,9 +206,16 @@ case "$PLATFORM" in
         echo "📦 平台：抖音小程序（tt-ide-cli） / 环境：${ENV_NAME}"
         check_cli "tma" "npm install -g tt-ide-cli"
 
+        TOKEN="$(get_arg "--token" "${EXTRA_ARGS[@]}" || true)"
+
         CMD=(tma upload "$PROJECT_PATH"
              --app-version "$VERSION"
              --app-changelog "$DESCRIPTION")
+
+        if [ -n "$TOKEN" ]; then
+            CMD+=(--token "$TOKEN")
+            echo "🔑 使用 token 认证（CI/CD 模式）"
+        fi
 
         echo "🚀 执行：${CMD[*]}"
         "${CMD[@]}"
@@ -213,8 +225,6 @@ case "$PLATFORM" in
         echo "📦 平台：微信小程序（@wxcloud/cli） / 环境：${ENV_NAME}"
         check_cli "wxcloud" "npm install -g @wxcloud/cli"
 
-        APP_ID="$(get_arg "--appId" "${EXTRA_ARGS[@]}" || true)"
-        PRIVATE_KEY="$(get_arg "--privateKey" "${EXTRA_ARGS[@]}" || true)"
         ENV_ID="$(get_arg "--envId" "${EXTRA_ARGS[@]}" || true)"
         SERVICE_NAME="$(get_arg "--serviceName" "${EXTRA_ARGS[@]}" || true)"
         RELEASE_TYPE="$(get_arg "--releaseType" "${EXTRA_ARGS[@]}" || echo "FULL")"
@@ -222,14 +232,6 @@ case "$PLATFORM" in
         if [ -z "$ENV_ID" ] || [ -z "$SERVICE_NAME" ]; then
             echo "❌ 错误：缺少 --envId 或 --serviceName"
             exit 1
-        fi
-
-        # 若提供 appId 与 privateKey，则先登录
-        if [ -n "$APP_ID" ] && [ -n "$PRIVATE_KEY" ]; then
-            echo "🔐 wxcloud login -a ${APP_ID} -k ${PRIVATE_KEY}"
-            wxcloud login -a "$APP_ID" -k "$PRIVATE_KEY"
-        else
-            echo "⚠️  未提供 --appId / --privateKey，将复用已登录会话"
         fi
 
         CMD=(wxcloud run:deploy
