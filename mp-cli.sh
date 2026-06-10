@@ -20,6 +20,7 @@ show_help() {
     echo "                              发布小程序到指定平台（项目路径默认 ./）"
     echo "  merge [版本号]               创建 PR 将 release 分支合并到主干"
     echo "  tag [版本号]                 在主干上打 vA.B.C 标签"
+    echo "  notice <版本号> \"<通知内容>\"  发送版本通知到企业微信群"
     echo "  setup [--all|--gh|--alipay|--douyin|--weixin]"
     echo "                              安装所需 CLI 工具（默认全部安装）"
     echo "  help                        显示此帮助信息"
@@ -32,6 +33,7 @@ show_help() {
     echo "  bash mp-cli.sh publish alipay prod 1.2.0 \"修复bug\""
     echo "  bash mp-cli.sh merge 1.2.0"
     echo "  bash mp-cli.sh tag 1.2.0"
+    echo "  bash mp-cli.sh notice 1.2.0 \"小程序版本1.2.0，跟版的需求请合并到 release/v1.2.0 分支\""
 }
 
 COMMAND="$1"
@@ -55,6 +57,9 @@ case "$COMMAND" in
         ;;
     tag)
         bash "${CMD_DIR}/tag.sh" "$@"
+        ;;
+    notice)
+        bash "${CMD_DIR}/notice.sh" "$@"
         ;;
     help|--help|-h|"")
         show_help

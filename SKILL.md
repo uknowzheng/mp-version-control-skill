@@ -1,6 +1,6 @@
 ---
 name: mp-version-control
-description: 小程序版本管理与发布工具。创建 release 分支并调用各平台 CLI 工具上传/发布小程序代码。适用于需要创建 release 分支、上传小程序版本、发布支付宝/抖音/微信小程序时使用。支持 slash 命令：/mp-version-setup、/mp-version-init、/mp-version-release、/mp-version-publish、/mp-version-merge、/mp-version-tag。触发词：release、发布、小程序、版本、上传、mp-version、setup、安装。
+description: 小程序版本管理与发布工具。创建 release 分支并调用各平台 CLI 工具上传/发布小程序代码，支持企业微信群机器人版本通知。适用于需要创建 release 分支、上传小程序版本、发布支付宝/抖音/微信小程序、通知团队跟版时使用。支持 slash 命令：/mp-version-setup、/mp-version-init、/mp-version-release、/mp-version-notice、/mp-version-publish、/mp-version-merge、/mp-version-tag。触发词：release、发布、小程序、版本、上传、通知、企微、mp-version、setup、安装。
 ---
 
 # 小程序版本管理与发布
@@ -21,6 +21,7 @@ description: 小程序版本管理与发布工具。创建 release 分支并调�
 | `/mp-version-setup` | 安装所需 CLI 工具（gh、minidev、tma、wxcloud） | `/mp-version-setup` |
 | `/mp-version-init` | 初始化 `.mp-release.json` 配置文件 | `/mp-version-init` |
 | `/mp-version-release` | 创建 release/vA.B.C 分支 | `/mp-version-release 1.2.0` |
+| `/mp-version-notice` | 发送版本通知到企业微信群 | `/mp-version-notice 10.25.1` |
 | `/mp-version-publish` | 发布小程序到指定平台 | `/mp-version-publish` |
 | `/mp-version-merge` | 创建 PR 合并到主干 | `/mp-version-merge` |
 | `/mp-version-tag` | 在主干上打版本标签 | `/mp-version-tag` |
@@ -33,6 +34,7 @@ description: 小程序版本管理与发布工具。创建 release 分支并调�
 - `/mp-version-setup` 或“安装 CLI”、“setup”
 - `/mp-version-init` 或“初始化配置”、“init”
 - `/mp-version-release` 或“创建 release 分支”、“拉版本”
+- `/mp-version-notice` 或“通知群”、“发通知”、“通知大家合代码”、“notify”
 - `/mp-version-publish` 或“发布小程序”、“上传”
 - `/mp-version-merge` 或“合并到主干”、“创建 PR”
 - `/mp-version-tag` 或“打 tag”、“打标签”
@@ -148,39 +150,17 @@ echo '.mp-release.json' >> .gitignore
 
 ```json
 {
-  "git": {
-    "hostname": ""
-  },
+  "git": { "hostname": "" },
   "platforms": {
     "alipay": {
-      "prod": {
-        "appId": "2021000000000000",
-        "token": ""
-      },
-      "test": {
-        "appId": "2021000000000001",
-        "token": ""
-      }
+      "prod": { "appId": "2021000000000000", "token": "" },
+      "test": { "appId": "2021000000000001", "token": "" }
     },
     "douyin": {
-      "prod": {
-        "appId": "ttxxxxxxx",
-        "token": ""
-      }
+      "prod": { "appId": "ttxxxxxxx", "token": "" }
     },
     "weixin": {
-      "prod": {
-        "appId": "wx_prod_abcdef",
-        "envId": "prod-1abc2def",
-        "serviceName": "app-service",
-        "token": ""
-      },
-      "test": {
-        "appId": "wx_test_123456",
-        "envId": "test-3ghi4jkl",
-        "serviceName": "app-service-test",
-        "token": ""
-      }
+      "prod": { "appId": "wx_prod_abcdef", "envId": "prod-1abc2def", "serviceName": "app-service", "token": "" }
     }
   }
 }
@@ -189,9 +169,8 @@ echo '.mp-release.json' >> .gitignore
 ### 注意事项
 
 - 文件已存在时脚本会询问是否覆盖；非交互场景可设置 `MP_INIT_OVERWRITE=y`
-- 仅需配置实际使用的平台与环境，未使用的字段可保留为空字符串
-- 同一平台可配置任意多个环境，环境名完全自由（prod/test/staging/default 等）
-- `git.hostname`：GitHub 企业版域名（不含 `https://`），留空则使用默认 github.com
+- 同一平台可配置任意多个环境，环境名完全自由
+- `git.hostname`：GitHub 企业版域名（不含 `https://`），留空则用 github.com
 - `token`：可选，用于 CI/CD 免登录认证；留空则依赖各平台 CLI 预登录会话
 - 建议加入 `.gitignore`
 
@@ -238,11 +217,72 @@ bash ${SKILL_DIR}/mp-cli.sh release <版本号>
 
 向用户确认分支创建成功，并提示后续可执行"发布小程序"命令。
 
+#### Step 4：询问是否通知团队
+
+分支创建成功并切回主干后，AI 主动询问用户：
+
+```
+问题：release/vX.Y.Z 分支已创建，是否需要发送企业微信群通知？
+选项：
+  - 发送通知 → 进入 notice Workflow（确认版本号、可选补充需求、确认后发送）
+  - 跳过 → 结束 release 流程
+```
+
+若用户选择发送，直接复用「命令 1.5：发送版本通知」的 Workflow（版本号已知，从 Step 1 确认版本号开始）。
+
 ### 注意事项
 
 - 若工作区有未提交修改，脚本会终止；需要先提交或 stash
 - 若 `release/v<版本号>` 分支已存在，脚本会报错并退出
 - 仓库需已配置 `origin` 远端
+
+---
+
+## 命令 1.5：发送版本通知（notice）
+
+### 触发场景
+
+- `/mp-version-notice`，或用户说“通知群”、“发通知”、“通知大家合代码”、“notify”
+
+### Workflow
+
+1. **确认版本号**：AI 展示当前版本号（若由 release 流程进入则已知；否则询问用户），请用户确认是否正确
+2. **可选说明版本需求**：AI 询问"是否需要补充本版需求说明？（可跳过）"。用户可以列出需求点，也可以直接跳过
+3. **组装通知文案**：
+   - 若有需求说明：
+     ```
+     小程序版本X.Y.Z，跟版的需求请合并到 release/vX.Y.Z 分支
+
+     本版需求：
+     - 需求1
+     - 需求2
+     ```
+   - 若无需求说明：
+     ```
+     小程序版本X.Y.Z，跟版的需求请合并到 release/vX.Y.Z 分支
+     ```
+4. **确认文案**：将组装好的文案展示给用户确认，用户可以修改
+5. **检查 .notice 文件**：确认项目根目录有 `.notice` 文件且包含 webhook URL，若不存在则提示用户创建
+6. **执行发送**：
+   ```bash
+   bash ${SKILL_DIR}/mp-cli.sh notice <版本号> "<通知内容>"
+   ```
+7. **反馈结果**：告知用户发送成功或失败原因
+
+### 前置条件
+
+- 项目根目录存在 `.notice` 文件，内容为企业微信群机器人 webhook 地址（建议加入 .gitignore）
+- 有网络访问权限（能访问 qyapi.weixin.qq.com）
+- 使用 text 消息类型与 `mentioned_list: ["@all"]` 实现 @所有人
+
+### .notice 文件格式
+
+```
+# 企业微信群机器人 webhook URL
+https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
+```
+
+取第一行非注释非空行作为 webhook URL。
 
 ---
 
@@ -327,124 +367,42 @@ bash ${SKILL_DIR}/mp-cli.sh publish <平台> <环境名> <版本号> "<描述>" 
 
 ### 平台一：支付宝小程序（minidev）
 
-#### 安装
-
-```bash
-npm install -g minidev
-```
-
-#### 认证方式
-
-发布前需完成认证（二选一）：
-
-- **本地模式**：预先执行 `minidev quickauth`，配置文件中 `token` 留空
-- **CI/CD 模式**：在配置文件中填入 `token`，发布时自动传给 `minidev upload --token`
-
-#### 上传命令
-
-```bash
-minidev upload \
-  --app-id <APPID> \
-  --version <版本号> \
-  --description "<描述>"
-```
-
-#### 参数说明
-
-| 参数 | 说明 | 示例 |
-| --- | --- | --- |
-| `--app-id` | 支付宝小程序 App ID | `2021000000000000` |
-| `--version` | 版本号 | `1.2.0` |
-| `--description` | 版本描述 | `"修复登录问题"` |
-
-调用：
-
-```bash
-bash ${SKILL_DIR}/mp-cli.sh publish alipay prod 1.2.0 "修复登录问题"
-```
+- 安装：`npm install -g minidev`
+- 认证：本地预登录 `minidev quickauth`（`token` 留空），或配置中填 `token` 由 CI/CD 使用 `--token`
+- 上传命令：
+  ```bash
+  minidev upload --app-id <APPID> --version <版本号> --description "<描述>"
+  ```
+- 参数：`--app-id`（支付宝小程序 App ID）、`--version`（版本号）、`--description`（描述）
+- 调用：`bash ${SKILL_DIR}/mp-cli.sh publish alipay prod 1.2.0 "修复登录问题"`
 
 ---
 
 ### 平台二：抖音小程序（tt-ide-cli）
 
-#### 安装
-
-```bash
-npm install -g tt-ide-cli
-```
-
-#### 认证方式
-
-发布前需完成认证（二选一）：
-
-- **本地模式**：预先执行 `tma login`，配置文件中 `token` 留空
-- **CI/CD 模式**：在配置文件中填入 `token`，发布时自动传给 `tma upload --token`
-
-#### 上传命令
-
-```bash
-tma upload <项目路径> \
-  --app-version <版本号> \
-  --app-changelog "<更新日志>"
-```
-
-#### 参数说明
-
-| 参数 | 说明 | 示例 |
-| --- | --- | --- |
-| `<项目路径>` | 小程序源码目录 | `./` |
-| `--app-version` | 版本号 | `1.2.0` |
-| `--app-changelog` | 更新日志 | `"新增首页改版"` |
-
-调用：
-
-```bash
-bash ${SKILL_DIR}/mp-cli.sh publish douyin prod 1.2.0 "新增首页改版"
-```
+- 安装：`npm install -g tt-ide-cli`
+- 认证：本地预登录 `tma login`（`token` 留空），或配置中填 `token` 由 CI/CD 使用 `--token`
+- 上传命令：
+  ```bash
+  tma upload <项目路径> --app-version <版本号> --app-changelog "<更新日志>"
+  ```
+- 参数：`<项目路径>`（源码目录）、`--app-version`、`--app-changelog`
+- 调用：`bash ${SKILL_DIR}/mp-cli.sh publish douyin prod 1.2.0 "新增首页改版"`
 
 ---
 
 ### 平台三：微信小程序（@wxcloud/cli）
 
-> 注意：`@wxcloud/cli` 主要用于微信云开发服务部署。若仅上传小程序代码请使用 `miniprogram-ci`。本 Skill 按需求文档使用 `@wxcloud/cli`。
+> 注：`@wxcloud/cli` 主要用于云开发服务部署。仅上传代码请用 `miniprogram-ci`，本 Skill 按需求文档使用 `@wxcloud/cli`。
 
-#### 安装
-
-```bash
-npm install -g @wxcloud/cli
-```
-
-#### 认证方式
-
-发布前需完成认证（二选一）：
-
-- **本地模式**：预先执行 `wxcloud login`，配置文件中 `token` 留空
-- **CI/CD 模式**：在配置文件中填入 `token`，发布时自动执行 `wxcloud login --appId <appId> --privateKey <token>`
-
-#### 部署命令
-
-```bash
-wxcloud run:deploy \
-  --envId <环境ID> \
-  --serviceName <服务名> \
-  --remark "<版本备注>" \
-  --releaseType FULL
-```
-
-#### 参数说明
-
-| 参数 | 说明 | 示例 |
-| --- | --- | --- |
-| `--envId` | 云开发环境 ID | `prod-1abc2def` |
-| `--serviceName` | 服务名 | `app-service` |
-| `--remark` | 版本备注 | `"v1.2.0 修复 bug"` |
-| `--releaseType` | 发布类型 | `FULL` 或 `GRAY` |
-
-调用：
-
-```bash
-bash ${SKILL_DIR}/mp-cli.sh publish weixin test 1.2.0 "v1.2.0 修复 bug"
-```
+- 安装：`npm install -g @wxcloud/cli`
+- 认证：本地预登录 `wxcloud login`（`token` 留空），或配置中填 `token` 自动执行 `wxcloud login --appId <appId> --privateKey <token>`
+- 部署命令：
+  ```bash
+  wxcloud run:deploy --envId <环境ID> --serviceName <服务名> --remark "<备注>" --releaseType FULL
+  ```
+- 参数：`--envId`、`--serviceName`、`--remark`、`--releaseType`（`FULL` 或 `GRAY`）
+- 调用：`bash ${SKILL_DIR}/mp-cli.sh publish weixin test 1.2.0 "v1.2.0 修复 bug"`
 
 ---
 

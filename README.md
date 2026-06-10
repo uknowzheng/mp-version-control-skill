@@ -41,6 +41,7 @@ cp -r /path/to/mp-version-control-skill ~/.qoder/skills/mp-version-control
 | `/mp-version-setup` | 安装所需 CLI 工具 | `/mp-version-setup` |
 | `/mp-version-init` | 初始化配置文件 | `/mp-version-init` |
 | `/mp-version-release` | 创建 release 分支 | `/mp-version-release 1.2.0` |
+| `/mp-version-notice` | 发送版本通知 | `/mp-version-notice 10.25.1` |
 | `/mp-version-publish` | 发布小程序 | `/mp-version-publish` |
 | `/mp-version-merge` | 创建 PR 合并到主干 | `/mp-version-merge` |
 | `/mp-version-tag` | 打版本标签 | `/mp-version-tag` |
@@ -51,6 +52,7 @@ cp -r /path/to/mp-version-control-skill ~/.qoder/skills/mp-version-control
 |---------|--------|--------|
 | "初始化小程序配置" / "帮我 init" | 引导选择平台、填写环境名和参数，生成 `.mp-release.json` | 平台、环境名、AppID 等 |
 | "拉一个 1.2.0 的 release" | 从 master/main 拉出 `release/v1.2.0`，推送后自动切回主干 | 版本号 |
+| "通知群" / "发通知跟版" | 记录版本+需求请求企微群机器人 @所有人 | 版本号、需求点 |
 | "发布支付宝小程序" / "上传到抖音和微信" | 调用对应平台 CLI 完成上传 | 平台、环境、版本号、描述 |
 | "合回主干" / "创建 PR" | 通过 `gh` 创建 PR，你在 GitHub 上 review 后合并 | 版本号 |
 | "打 tag" / "打标签" | 在主干上创建 `vA.B.C` tag 并推送 | 版本号 |
@@ -60,6 +62,17 @@ cp -r /path/to/mp-version-control-skill ~/.qoder/skills/mp-version-control
 - 文件名：`.mp-release.json`（建议加入 `.gitignore`）
 - 支持同一平台多环境配置（平台 → 环境名 → 参数）
 - `git.hostname`：配置 GitHub 企业版域名（留空则使用默认 github.com）
+
+### Webhook 配置（可选，用于 notice 命令）
+
+在项目根目录创建 `.notice` 文件（建议加入 `.gitignore`）：
+
+```
+# 企业微信群机器人 webhook URL
+https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
+```
+
+获取 webhook：企业微信群 → 群设置 → 群机器人 → 添加 → 复制 webhook 地址。脚本以 text 消息发送，默认 @所有人。
 
 ```json
 {
@@ -105,7 +118,7 @@ cp -r /path/to/mp-version-control-skill ~/.qoder/skills/mp-version-control
 ## 完整工作流
 
 ```
-setup → init → release → publish → [灰度验证] → merge → [PR review] → tag
+setup → init → release → notice → publish → [灰度验证] → merge → [PR review] → tag
 ```
 
 | 步骤 | 命令 | 说明 |
@@ -113,6 +126,7 @@ setup → init → release → publish → [灰度验证] → merge → [PR revi
 | 1️⃣ 安装环境 | `/mp-version-setup` | 一键安装 gh、minidev、tma、wxcloud（仅首次） |
 | 2️⃣ 初始化配置 | `/mp-version-init` | 生成 `.mp-release.json`，配置各平台参数（仅首次） |
 | 3️⃣ 拉版本分支 | `/mp-version-release 1.2.0` | 从 master/main 创建 `release/v1.2.0`，推送后自动切回主干 |
+| 3.5️⃣ 通知团队 | `/mp-version-notice` | 发送企业微信群通知，@所有人提醒合并代码到 release 分支 |
 | 4️⃣ 发布小程序 | `/mp-version-publish` | 选择平台、环境，调用 CLI 上传代码 |
 | 5️⃣ 灰度验证 | （人工确认） | 线上灰度观察，确认无问题 |
 | 6️⃣ 合回主干 | `/mp-version-merge` | 创建 PR，在 GitHub 上 review 后合并 |
@@ -129,6 +143,31 @@ AI：引导选择平台、填写参数，生成 .mp-release.json ✅
 
 你：/mp-version-release 1.2.0
 AI：创建 release/v1.2.0 分支，推送到远端，切回 master ✅
+AI：是否需要发送企业微信群通知？（输入“发送”继续，或“跳过”结束）
+你：发送
+AI：版本号 1.2.0，确认正确吗？
+你：确认
+AI：是否需要补充本版需求说明？（可跳过）
+你：首页改版、登录优化
+AI：通知文案如下：
+    小程序版本1.2.0，跟版的需求请合并到 release/v1.2.0 分支
+    本版需求：
+    - 首页改版
+    - 登录优化
+    确认发送吗？
+你：确认
+AI：通知发送成功 ✅
+
+你：/mp-version-notice 1.2.0
+AI：版本号 1.2.0，确认正确吗？
+你：确认
+AI：是否需要补充本版需求说明？（可跳过）
+你：跳过
+AI：通知文案如下：
+    小程序版本1.2.0，跟版的需求请合并到 release/v1.2.0 分支
+    确认发送吗？
+你：确认
+AI：通知发送成功 ✅
 
 你：/mp-version-publish
 AI：询问平台(支付宝)、环境(prod)、版本(1.2.0)、描述，执行 minidev upload ✅
@@ -156,6 +195,7 @@ mp-version-control-skill/
     ├── init.sh           # 初始化配置
     ├── release.sh        # 创建 release 分支
     ├── publish.sh        # 发布小程序
+    ├── notice.sh         # 企微群机器人发通知
     ├── merge.sh          # 创建 PR
     └── tag.sh            # 打标签
 ```
