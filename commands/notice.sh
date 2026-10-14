@@ -1,20 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # notice.sh
-# 用途：通过企业微信 webhook 群机器人发送版本通知
-# 用法：bash notice.sh <版本号> "<通知内容>"
-#
-# 示例：
-#   bash notice.sh 10.25.1 "小程序版本10.25.1，跟版的需求请合并到 release/v10.25.1 分支"
+# 用途：通过企业微信 webhook 群机器人发送版本通知，可附带二维码图片
+# 用法：bash notice.sh <版本号> "<通知内容>" [二维码图片路径]
 
-set -e
+set -euo pipefail
 
-VERSION="$1"
-MESSAGE="$2"
+VERSION="${1:-}"
+MESSAGE="${2:-}"
+QR_PATH="${3:-}"
 
-# ---------- 1. 校验参数 ----------
 if [ -z "$VERSION" ] || [ -z "$MESSAGE" ]; then
     echo "❌ 错误：参数不完整"
-    echo "用法：bash notice.sh <版本号> \"<通知内容>\""
+    echo "用法：bash notice.sh <版本号> \"<通知内容>\" [二维码图片路径]"
     exit 1
 fi
 
@@ -23,13 +20,18 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-# ---------- 2. 读取 webhook URL ----------
 NOTICE_FILE="./.notice"
 WEBHOOK_URL=""
 
 if [ -f "$NOTICE_FILE" ]; then
-    # 读取第一行非空非注释内容作为 webhook URL
-    WEBHOOK_URL="$(grep -v '^[[:space:]]*#' "$NOTICE_FILE" | grep -v '^[[:space:]]*$' | head -n 1 | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    while IFS= read -r line; do
+        line="${line#${line%%[![:space:]]*}}"
+        line="${line%${line##*[![:space:]]}}"
+        if [ -n "$line" ] && [[ "$line" != \#* ]]; then
+            WEBHOOK_URL="$line"
+            break
+        fi
+    done < "$NOTICE_FILE"
 fi
 
 if [ -z "$WEBHOOK_URL" ]; then
@@ -39,53 +41,114 @@ if [ -z "$WEBHOOK_URL" ]; then
     exit 1
 fi
 
-# ---------- 3. 构建 JSON payload（优先 jq，fallback python3，再 fallback 手动转义） ----------
-if command -v jq >/dev/null 2>&1; then
-    PAYLOAD=$(jq -n --arg msg "$MESSAGE" '{msgtype:"text",text:{content:$msg,mentioned_list:["@all"]}}')
-elif command -v python3 >/dev/null 2>&1; then
-    PAYLOAD=$(python3 -c "
-import json, sys
-msg = sys.argv[1]
-print(json.dumps({'msgtype':'text','text':{'content':msg,'mentioned_list':['@all']}}, ensure_ascii=False))
-" "$MESSAGE")
-else
-    # fallback: 手动转义 " 与换行
-    ESCAPED_MSG=$(printf '%s' "$MESSAGE" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN{ORS=""} {if(NR>1) print "\\n"; print}')
-    PAYLOAD="{\"msgtype\":\"text\",\"text\":{\"content\":\"${ESCAPED_MSG}\",\"mentioned_list\":[\"@all\"]}}"
-fi
+build_text_payload() {
+    if command -v jq >/dev/null 2>&1; then
+        jq -n --arg msg "$MESSAGE" '{msgtype:"text",text:{content:$msg,mentioned_list:["@all"]}}'
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 - "$MESSAGE" <<'PY'
+import json
+import sys
+print(json.dumps({
+    'msgtype': 'text',
+    'text': {'content': sys.argv[1], 'mentioned_list': ['@all']}
+}, ensure_ascii=False))
+PY
+    else
+        echo "❌ 错误：发送通知需要 jq 或 python3"
+        exit 1
+    fi
+}
 
-# ---------- 4. 发送请求 ----------
+build_image_payload() {
+    if [ ! -f "$QR_PATH" ]; then
+        echo "❌ 错误：二维码文件不存在：${QR_PATH}" >&2
+        exit 1
+    fi
+
+    local size
+    size="$(wc -c < "$QR_PATH" | tr -d ' ')"
+    if [ "$size" -gt 2097152 ]; then
+        echo "❌ 错误：二维码图片超过企业微信机器人 2MB 限制" >&2
+        exit 1
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$QR_PATH" <<'PY'
+import base64
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+content = Path(sys.argv[1]).read_bytes()
+print(json.dumps({
+    'msgtype': 'image',
+    'image': {
+        'base64': base64.b64encode(content).decode('ascii'),
+        'md5': hashlib.md5(content).hexdigest(),
+    }
+}))
+PY
+    elif command -v jq >/dev/null 2>&1; then
+        local base64_content md5_value
+        base64_content="$(base64 < "$QR_PATH" | tr -d '\r\n')"
+        if command -v md5 >/dev/null 2>&1; then
+            md5_value="$(md5 -q "$QR_PATH")"
+        elif command -v md5sum >/dev/null 2>&1; then
+            md5_value="$(md5sum "$QR_PATH" | awk '{print $1}')"
+        else
+            echo "❌ 错误：发送二维码需要 md5 或 md5sum" >&2
+            exit 1
+        fi
+        jq -n --arg base64 "$base64_content" --arg md5 "$md5_value" \
+            '{msgtype:"image",image:{base64:$base64,md5:$md5}}'
+    else
+        echo "❌ 错误：发送二维码需要 python3 或 jq" >&2
+        exit 1
+    fi
+}
+
+send_payload() {
+    local payload="$1"
+    local response http_code body errcode
+
+    response="$(curl -s -w '\n%{http_code}' \
+        "$WEBHOOK_URL" \
+        -H 'Content-Type: application/json' \
+        -d "$payload")"
+    http_code="$(printf '%s\n' "$response" | tail -n 1)"
+    body="$(printf '%s\n' "$response" | sed '$d')"
+
+    if [ "$http_code" != "200" ]; then
+        echo "❌ 请求失败，HTTP 状态码：${http_code}" >&2
+        printf '%s\n' "$body" >&2
+        return 1
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        errcode="$(printf '%s' "$body" | jq -r '.errcode // 0')"
+    elif command -v python3 >/dev/null 2>&1; then
+        errcode="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("errcode",0))' 2>/dev/null || printf '0')"
+    else
+        errcode="0"
+    fi
+
+    if [ "$errcode" != "0" ]; then
+        echo "❌ 发送失败，企业微信返回错误：" >&2
+        printf '%s\n' "$body" >&2
+        return 1
+    fi
+}
+
 echo "📢 发送版本通知..."
 echo "   版本：v${VERSION}"
 echo "   Webhook：${WEBHOOK_URL:0:50}..."
 echo ""
 
-RESPONSE=$(curl -s -w "\n%{http_code}" \
-  "$WEBHOOK_URL" \
-  -H 'Content-Type: application/json' \
-  -d "$PAYLOAD")
+send_payload "$(build_text_payload)"
+echo "✅ 文字通知发送成功！"
 
-HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-
-if [ "$HTTP_CODE" = "200" ]; then
-    # 检查企业微信返回的 errcode
-    ERRCODE=""
-    if command -v jq >/dev/null 2>&1; then
-        ERRCODE="$(echo "$BODY" | jq -r '.errcode // 0')"
-    elif command -v python3 >/dev/null 2>&1; then
-        ERRCODE="$(python3 -c "import json,sys; print(json.loads(sys.stdin.read()).get('errcode',0))" <<< "$BODY" 2>/dev/null)"
-    fi
-
-    if [ "$ERRCODE" = "0" ] || [ -z "$ERRCODE" ]; then
-        echo "✅ 通知发送成功！"
-    else
-        echo "❌ 发送失败，企业微信返回错误："
-        echo "$BODY"
-        exit 1
-    fi
-else
-    echo "❌ 请求失败，HTTP 状态码：${HTTP_CODE}"
-    echo "$BODY"
-    exit 1
+if [ -n "$QR_PATH" ]; then
+    send_payload "$(build_image_payload)"
+    echo "✅ 二维码图片发送成功！"
 fi

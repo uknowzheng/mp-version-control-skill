@@ -1,211 +1,204 @@
-# 小程序版本管理 Skill（mp-version-control）
+# 微信小程序版本管理 Skill（mp-version-control）
 
-通过 AI 对话完成小程序 release 分支管理、多平台发布、PR 合并与打 tag 的全流程自动化。
+通过 AI 对话完成微信小程序的 release 分支管理、环境构建、二维码预览、企业微信通知、体验版上传、PR 合并和打 tag。
 
-## 安装方式
+## 适用范围
+
+本 Skill 只处理微信小程序，不再安装或调用支付宝、抖音、`wxcloud` 等平台 CLI。
+
+- Git：创建和同步 `release/vA.B.C` 分支
+- pnpm：构建 `stg` / `prod` 微信小程序
+- wechatide-skill：加载 `dist` 产物、编译、生成二维码、上传体验版
+- 企业微信机器人：发送分支通知和带二维码的构建通知
+- GitHub CLI：创建 PR
+
+## 安装
 
 ```bash
 npx skills add uknowzheng/mp-version-control-skill
 ```
 
-或手动安装：
+前置依赖：
+
+- Git
+- Node.js / pnpm
+- GitHub CLI（仅创建 PR 时需要）
+- 微信开发者工具及 `wechatide` Skill
+
+微信开发者工具的登录、状态检查、编译、二维码和上传必须通过 `wechatide-skill`，本 Skill 不直接伪造 MCP 调用。
+
+## 命令
+
+| 命令 | 用途 | 示例 |
+|---|---|---|
+| `/mp-version-setup` | 检查 GitHub CLI | `/mp-version-setup` |
+| `/mp-version-init` | 初始化 Git 配置 | `/mp-version-init` |
+| `/mp-version-release` | 创建并推送 release 分支 | `/mp-version-release 1.2.0` |
+| `/mp-version-preview` | 拉取 release 分支并打 stg/prod 测试包 | `/mp-version-preview stg 1.2.0` |
+| `/mp-version-notice` | 手动发送企业微信通知 | `/mp-version-notice 1.2.0` |
+| `/mp-version-merge` | 创建 release → 主干 PR | `/mp-version-merge 1.2.0` |
+| `/mp-version-tag` | 在主干创建并推送版本 tag | `/mp-version-tag 1.2.0` |
+
+## 工作流边界
+
+### 版本分支拉取工作流
+
+这一步只负责创建版本分支并通知团队：
+
+```text
+/mp-version-release 1.2.0
+→ 创建并推送 release/v1.2.0
+→ 询问是否发送分支通知
+→ （确认后发送企业微信分支通知）
+```
+
+该工作流不构建小程序，也不调用 `wechatide`。
+
+### 打测试包工作流
+
+`/mp-version-preview` 表示打包预览流程。以 stg 为例：
+
+```text
+/mp-version-preview stg 1.2.0
+→ checkout release/v1.2.0
+→ 拉最新的 release/v1.2.0 代码
+→ pnpm run app:stg:mp-weixin
+→ dist/stg/mp-weixin
+→ wechatide 编译
+→ 生成二维码
+→ 询问是否发送构建通知
+→ 发送文字 + 二维码图片
+→ 用户明确要求后调用 wechatide upload
+→ 设置上传版本号 1.2.0
+```
+
+`prod` 复用同一打包流程，仅替换构建命令和产物目录：
+
+```text
+/mp-version-preview prod 1.2.0
+→ pnpm run app:prod:mp-weixin
+→ dist/prod/mp-weixin
+```
+
+### 完整流程
+
+```text
+版本分支拉取工作流
+→ 打测试包工作流
+→ merge
+→ tag
+```
+
+### 1. 创建 release 分支
 
 ```bash
-# 软链接（开发/测试时）
-mkdir -p .qoder/skills
-ln -s /path/to/mp-version-control-skill .qoder/skills/mp-version-control
-
-# 复制到个人目录（全局可用）
-cp -r /path/to/mp-version-control-skill ~/.qoder/skills/mp-version-control
+bash mp-cli.sh release 1.2.0
 ```
 
-## 前置依赖
+脚本会从 `master` 或 `main` 创建并推送：
 
-- **Git**
-- **GitHub CLI**（`gh`）—— 用于创建 PR，安装：`brew install gh`
-- **各平台 CLI**（按需安装）：
-  - 支付宝：`npm install -g minidev`
-  - 抖音：`npm install -g tt-ide-cli`
-  - 微信：`npm install -g @wxcloud/cli`
-
-> 💡 可通过 `/mp-version-setup` 一键安装以上所有 CLI 工具。
-
-## 使用方式
-
-支持两种触发方式：slash 命令或自然语言对话。
-
-### Slash 命令
-
-| 命令 | 功能 | 示例 |
-|------|------|------|
-| `/mp-version-setup` | 安装所需 CLI 工具 | `/mp-version-setup` |
-| `/mp-version-init` | 初始化配置文件 | `/mp-version-init` |
-| `/mp-version-release` | 创建 release 分支 | `/mp-version-release 1.2.0` |
-| `/mp-version-notice` | 发送版本通知 | `/mp-version-notice 10.25.1` |
-| `/mp-version-publish` | 发布小程序 | `/mp-version-publish` |
-| `/mp-version-merge` | 创建 PR 合并到主干 | `/mp-version-merge` |
-| `/mp-version-tag` | 打版本标签 | `/mp-version-tag` |
-
-### 自然语言触发
-
-| 你对 AI 说 | AI 行为 | 需要提供 |
-|---------|--------|--------|
-| "初始化小程序配置" / "帮我 init" | 引导选择平台、填写环境名和参数，生成 `.mp-release.json` | 平台、环境名、AppID 等 |
-| "拉一个 1.2.0 的 release" | 从 master/main 拉出 `release/v1.2.0`，推送后自动切回主干 | 版本号 |
-| "通知群" / "发通知跟版" | 记录版本+需求请求企微群机器人 @所有人 | 版本号、需求点 |
-| "发布支付宝小程序" / "上传到抖音和微信" | 调用对应平台 CLI 完成上传 | 平台、环境、版本号、描述 |
-| "合回主干" / "创建 PR" | 通过 `gh` 创建 PR，你在 GitHub 上 review 后合并 | 版本号 |
-| "打 tag" / "打标签" | 在主干上创建 `vA.B.C` tag 并推送 | 版本号 |
-
-## 配置文件说明
-
-- 文件名：`.mp-release.json`（建议加入 `.gitignore`）
-- 支持同一平台多环境配置（平台 → 环境名 → 参数）
-- `git.hostname`：配置 GitHub 企业版域名（留空则使用默认 github.com）
-
-### Webhook 配置（可选，用于 notice 命令）
-
-在项目根目录创建 `.notice` 文件（建议加入 `.gitignore`）：
-
+```text
+release/v1.2.0
 ```
-# 企业微信群机器人 webhook URL
+
+脚本完成后会切回主分支。Skill 随后询问是否发送第一类企业微信通知：
+
+```text
+版本 1.2.0 的 release/v1.2.0 分支已创建，请将需求代码合入该分支。
+```
+
+确认发送后调用 `notice`，这条通知不附带二维码。
+
+### 2. 打测试包
+
+```bash
+bash mp-cli.sh preview stg 1.2.0
+bash mp-cli.sh preview prod 1.2.0
+```
+
+构建映射固定为：
+
+```text
+stg  → pnpm run app:stg:mp-weixin  → dist/stg/mp-weixin
+prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
+```
+
+`preview` 会：
+
+1. 检查工作区干净；
+2. 拉取远端信息；
+3. 切换到 `release/vA.B.C` 并执行 fast-forward pull；
+4. 执行对应 pnpm 构建；
+5. 校验 `project.config.json`、有效 `appid`、`compileType` 和 `app.json`；
+6. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`。
+
+随后 Agent 调用微信开发者工具：
+
+```text
+open_project_window(project=dist/<env>/mp-weixin)
+simulator_open_page(project=dist/<env>/mp-weixin, page=<app.json 首页面>)
+create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<二维码图片路径>)
+```
+
+### 3. 构建完成后的企业微信通知
+
+生成二维码后，Skill 询问是否发送第二类通知。确认后发送：
+
+1. 版本、环境、分支和构建结果文字；
+2. 二维码图片消息。
+
+调用方式：
+
+```bash
+bash mp-cli.sh notice \
+  1.2.0 \
+  "stg 包已构建完成，请扫码验证" \
+  "/tmp/mp-preview-1.2.0-stg.png"
+```
+
+二维码通过企业微信机器人 `image` 消息发送，使用图片 Base64 和 MD5，不要求图片有公网 URL。
+
+`.notice` 文件格式：
+
+```text
+# 企业微信群机器人 webhook
 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
 ```
 
-获取 webhook：企业微信群 → 群设置 → 群机器人 → 添加 → 复制 webhook 地址。脚本以 text 消息发送，默认 @所有人。
+脚本会先发文字，再发二维码。任一发送失败都会报告失败，不会继续假装完成后续步骤。
+
+### 4. 上传体验版
+
+只有用户明确要求上传时，Agent 才调用微信开发者工具：
+
+```text
+upload(
+  project=dist/<env>/mp-weixin,
+  upload-version=1.2.0,
+  desc=<版本描述>
+)
+```
+
+上传前必须确认版本号、环境、产物路径和版本描述。开发者工具出现确认弹窗或返回 `pending` 时暂停等待，不自动重试上传。
+
+## 配置
+
+`.mp-release.json` 只保存可公开的 GitHub Enterprise 域名配置：
 
 ```json
 {
   "git": {
     "hostname": ""
-  },
-  "platforms": {
-    "weixin": {
-      "prod": {
-        "appId": "wx_prod_xxx",
-        "envId": "prod-abc",
-        "serviceName": "app-service",
-        "token": ""
-      },
-      "test": {
-        "appId": "wx_test_xxx",
-        "envId": "test-def",
-        "serviceName": "app-service-test",
-        "token": ""
-      }
-    }
   }
 }
 ```
 
-### 认证方式
+不要将 AppID 私钥、企业微信 webhook 或其他凭据提交到 Git。`.notice` 和本地敏感配置应加入 `.gitignore`。
 
-支持两种认证模式，通过 `token` 字段切换：
+## 安全边界
 
-| 方式 | 适用场景 | 配置 |
-|------|----------|------|
-| 预登录（推荐本地开发） | 本地手动发布 | `token` 留空，预先执行 CLI 登录命令 |
-| Token（推荐 CI/CD） | 自动化流水线 | 在 `token` 字段填入对应平台的认证凭据 |
-
-**各平台 token 含义：**
-
-| 平台 | token 用途 | 预登录命令 |
-|------|-----------|----------|
-| 支付宝 | 传给 `minidev upload --token` | `minidev quickauth` |
-| 抖音 | 传给 `tma upload --token` | `tma login` |
-| 微信 | 传给 `wxcloud login --privateKey` | `wxcloud login` |
-
-## 完整工作流
-
-```
-setup → init → release → notice → publish → [灰度验证] → merge → [PR review] → tag
-```
-
-| 步骤 | 命令 | 说明 |
-|------|------|------|
-| 1️⃣ 安装环境 | `/mp-version-setup` | 一键安装 gh、minidev、tma、wxcloud（仅首次） |
-| 2️⃣ 初始化配置 | `/mp-version-init` | 生成 `.mp-release.json`，配置各平台参数（仅首次） |
-| 3️⃣ 拉版本分支 | `/mp-version-release 1.2.0` | 从 master/main 创建 `release/v1.2.0`，推送后自动切回主干 |
-| 3.5️⃣ 通知团队 | `/mp-version-notice` | 发送企业微信群通知，@所有人提醒合并代码到 release 分支 |
-| 4️⃣ 发布小程序 | `/mp-version-publish` | 选择平台、环境，调用 CLI 上传代码 |
-| 5️⃣ 灰度验证 | （人工确认） | 线上灰度观察，确认无问题 |
-| 6️⃣ 合回主干 | `/mp-version-merge` | 创建 PR，在 GitHub 上 review 后合并 |
-| 7️⃣ 打标签 | `/mp-version-tag` | PR 合并后，在主干上创建 `v1.2.0` tag |
-
-### 对话示例
-
-```
-你：/mp-version-setup
-AI：检测并安装缺失的 CLI 工具 ✅
-
-你：/mp-version-init
-AI：引导选择平台、填写参数，生成 .mp-release.json ✅
-
-你：/mp-version-release 1.2.0
-AI：创建 release/v1.2.0 分支，推送到远端，切回 master ✅
-AI：是否需要发送企业微信群通知？（输入“发送”继续，或“跳过”结束）
-你：发送
-AI：版本号 1.2.0，确认正确吗？
-你：确认
-AI：是否需要补充本版需求说明？（可跳过）
-你：首页改版、登录优化
-AI：通知文案如下：
-    小程序版本1.2.0，跟版的需求请合并到 release/v1.2.0 分支
-    本版需求：
-    - 首页改版
-    - 登录优化
-    确认发送吗？
-你：确认
-AI：通知发送成功 ✅
-
-你：/mp-version-notice 1.2.0
-AI：版本号 1.2.0，确认正确吗？
-你：确认
-AI：是否需要补充本版需求说明？（可跳过）
-你：跳过
-AI：通知文案如下：
-    小程序版本1.2.0，跟版的需求请合并到 release/v1.2.0 分支
-    确认发送吗？
-你：确认
-AI：通知发送成功 ✅
-
-你：/mp-version-publish
-AI：询问平台(支付宝)、环境(prod)、版本(1.2.0)、描述，执行 minidev upload ✅
-
-[灰度验证通过...]
-
-你：/mp-version-merge
-AI：创建 PR：release/v1.2.0 → master ✅
-
-[GitHub 上 review 并合并 PR]
-
-你：/mp-version-tag
-AI：在 master 上创建 v1.2.0 tag 并推送 ✅
-```
-
-## 目录结构
-
-```
-mp-version-control-skill/
-├── README.md
-├── SKILL.md              # AI 读取的技能指令
-├── mp-cli.sh             # 统一 CLI 入口
-└── commands/
-    ├── setup.sh          # 安装依赖工具
-    ├── init.sh           # 初始化配置
-    ├── release.sh        # 创建 release 分支
-    ├── publish.sh        # 发布小程序
-    ├── notice.sh         # 企微群机器人发通知
-    ├── merge.sh          # 创建 PR
-    └── tag.sh            # 打标签
-```
-
-## 常见问题
-
-| 问题 | 解决方案 |
-|-----|----------|
-| 没有 remote | 先执行 `git remote add origin <url>` |
-| gh 未登录 | 执行 `gh auth login` |
-| 使用 GitHub 企业版 | 在 `.mp-release.json` 中配置 `git.hostname`，并执行 `gh auth login --hostname <域名>` |
-| 平台 CLI 未安装 | AI 会提示对应的 `npm install` 命令 |
-| 工作区有未提交修改 | 先 `git commit` 或 `git stash` |
+- 分支创建、构建和二维码生成可以自动执行。
+- 企业微信通知在两个节点分别询问：分支创建后、二维码生成后。
+- 体验版上传是写操作，必须获得用户明确要求和开发者工具确认。
+- 不自动发布正式版，不操作云数据库，不部署云函数。
+- `wechatide` 工具名和参数以当前安装的 `wechatide-skill` 为准。
