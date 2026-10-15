@@ -72,6 +72,29 @@ fi
 
 git pull --ff-only origin "${BRANCH_NAME}"
 
+load_node18() {
+    export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+    if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+        echo "❌ 错误：未找到 NVM：${NVM_DIR}/nvm.sh"
+        exit 1
+    fi
+
+    # shellcheck disable=SC1090
+    source "$NVM_DIR/nvm.sh"
+    if ! command -v nvm >/dev/null 2>&1; then
+        echo "❌ 错误：NVM 加载失败"
+        exit 1
+    fi
+
+    echo "🔧 切换 Node.js：nvm use 18"
+    if ! nvm use 18; then
+        echo "❌ 错误：Node.js 18 不可用，请先执行 nvm install 18"
+        exit 1
+    fi
+}
+
+load_node18
+
 BUILD_SCRIPT="app:${ENV_NAME}:mp-weixin"
 echo "📦 构建微信小程序：pnpm run ${BUILD_SCRIPT}"
 pnpm run "${BUILD_SCRIPT}"

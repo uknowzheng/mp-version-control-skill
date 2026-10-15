@@ -1,6 +1,6 @@
 ---
 name: mp-version-control
-version: 0.2.1
+version: 0.2.2
 description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成二维码，按用户确认发送企业微信通知并上传体验版，支持 PR 与 tag。
 ---
 
@@ -203,6 +203,7 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 构建前门禁只拦截未提交的业务代码修改。项目运行时生成或更新的文件允许保留，例如 `src/common/router.config.js`、`src/pages.json`、`src/manifest.json`、`src/config/`、`src/common/store/business/`、`build-target/`、`dist/`、`unpackage/` 和 `.builder-hook-context.json`。
 
 如果工作区包含其他未提交文件，脚本仍会停止，避免把业务改动误带入测试包。
+构建前会加载 NVM 并显式执行 `nvm use 18`，然后才执行 `pnpm run`。如果 NVM 或 Node.js 18 不可用，流程直接停止，不回退到其他 Node 版本。
 
 脚本然后校验：
 

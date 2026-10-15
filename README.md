@@ -129,9 +129,10 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 2. 仍拦截其他未提交业务代码修改；
 3. 拉取远端信息；
 4. 切换到 `release/vA.B.C` 并执行 fast-forward pull；
-5. 执行对应 pnpm 构建；
-6. 校验 `project.config.json`、有效 `appid`、`compileType` 和 `app.json`；
-7. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`。
+5. 加载 NVM 并执行 `nvm use 18`，确认成功后才执行 pnpm 构建；
+6. 执行对应 pnpm 构建；
+7. 校验 `project.config.json`、有效 `appid`、`compileType` 和 `app.json`；
+8. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`。
 
 随后 Agent 调用微信开发者工具：
 
