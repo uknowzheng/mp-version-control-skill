@@ -1,7 +1,7 @@
 ---
 name: mp-version-control
-version: 0.2.2
-description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成二维码，按用户确认发送企业微信通知并上传体验版，支持 PR 与 tag。
+version: 0.2.3
+description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成预览二维码，按用户确认发送企业微信通知并上传体验版，报告上传后的体验版二维码可用性，支持 PR 与 tag。
 ---
 
 # 微信小程序版本控制
@@ -230,10 +230,31 @@ PREVIEW_PAGE
 1. `open_project_window`，项目路径为 `PREVIEW_PROJECT`；
 2. `simulator_open_page`，页面为 `PREVIEW_PAGE`；
 3. 编译并检查实际结果；
-4. `create_preview_qrcode`，使用 `qr-format=image` 和本地 `qr-output`，以获得二维码图片路径；
-5. 编译失败时不要生成成功报告，也不要继续上传。
+4. `create_preview_qrcode`，使用 `qr-format=image` 和本地 `qr-output`，以获得**开发者预览二维码**；
+5. 编译失败时不要生成成功报告，也不要继续上传；
+6. 预览二维码生成后，先询问是否发送构建通知；通知处理完毕后，再询问是否上传体验版。
 
 不要把源码根目录交给微信开发者工具；必须加载构建产物 `dist/<env>/mp-weixin`。
+
+### 预览二维码与体验版上传
+
+`create_preview_qrcode` 生成的是本地构建产物的开发者预览二维码，不是体验版二维码。用户确认上传后，调用：
+
+```text
+upload(
+  project=PREVIEW_PROJECT,
+  upload-version=PREVIEW_VERSION,
+  desc=<版本描述>
+)
+```
+
+上传成功后必须根据 `upload` 的真实返回值报告：
+
+- 若返回中明确包含体验版二维码路径、图片或 URL，才报告体验版二维码并提供该结果；
+- 若返回不包含体验版二维码，报告“体验版上传成功，但当前 wechatide Skill 未返回体验版二维码”，不要把此前的预览二维码改称为体验版二维码；
+- 当前工具注册表只有 `create_preview_qrcode`（预览二维码）和 `upload`（上传体验版），没有独立的“获取体验版二维码”工具，因此不能凭猜测补调其他工具。
+
+`upload` 返回 `pending + taskId` 时，暂停并等待用户在微信开发者工具内完成确认；不得重发上传，也不得提前报告上传成功。
 
 ## 第二类企业微信通知
 
@@ -273,13 +294,13 @@ upload(
 )
 ```
 
-约束：
-
 - 只有用户明确要求“上传体验版/上传代码”时才调用；
 - 上传前确认环境、项目路径、版本号和描述；
 - 开发者工具弹窗、授权或 `pending` 时等待用户处理；
 - 用户拒绝、超时或取消后不要自动重试；
-- 上传成功前不能报告“已上传”。
+- 上传成功前不能报告“已上传”；
+- 上传成功后只使用 `upload` 实际返回的体验版二维码路径、图片或 URL；
+- `upload` 未返回体验版二维码时，明确报告已上传但当前工具无法自动获取体验版二维码，不得复用或改名此前的开发者预览二维码。
 
 ## Workflow：notice
 

@@ -141,6 +141,7 @@ open_project_window(project=dist/<env>/mp-weixin)
 simulator_open_page(project=dist/<env>/mp-weixin, page=<app.json 首页面>)
 create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<二维码图片路径>)
 ```
+这里生成的是**开发者预览二维码**，不是体验版二维码。生成成功后先询问是否发送构建通知；通知处理完成后，再询问是否上传体验版。
 
 ### 3. 构建完成后的企业微信通知
 
@@ -171,7 +172,7 @@ https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
 
 ### 4. 上传体验版
 
-只有用户明确要求上传时，Agent 才调用微信开发者工具：
+用户明确要求上传后，Agent 调用微信开发者工具：
 
 ```text
 upload(
@@ -181,7 +182,9 @@ upload(
 )
 ```
 
-上传前必须确认版本号、环境、产物路径和版本描述。开发者工具出现确认弹窗或返回 `pending` 时暂停等待，不自动重试上传。
+上传完成后只使用 `upload` 实际返回的体验版二维码路径、图片或 URL。当前微信 Skill 提供独立的预览二维码工具，但没有独立的体验版二维码工具；如果 `upload` 不返回体验版二维码，只报告上传成功，并说明需要从微信开发者工具或公众平台获取体验版二维码，不能把预览二维码改称为体验版二维码。
+
+上传中的授权确认或 `pending` 必须等待，不得自动重试。
 
 ## 配置
 
