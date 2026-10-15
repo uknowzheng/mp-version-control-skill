@@ -125,12 +125,13 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 
 `preview` 会：
 
-1. 检查工作区干净；
-2. 拉取远端信息；
-3. 切换到 `release/vA.B.C` 并执行 fast-forward pull；
-4. 执行对应 pnpm 构建；
-5. 校验 `project.config.json`、有效 `appid`、`compileType` 和 `app.json`；
-6. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`。
+1. 允许项目运行时生成的文件保留在工作区，例如 `src/common/router.config.js`、`src/pages.json`、`src/manifest.json`、`src/config/`、`src/common/store/business/`、`build-target/`、`dist/`、`unpackage/` 和 `.builder-hook-context.json`；
+2. 仍拦截其他未提交业务代码修改；
+3. 拉取远端信息；
+4. 切换到 `release/vA.B.C` 并执行 fast-forward pull；
+5. 执行对应 pnpm 构建；
+6. 校验 `project.config.json`、有效 `appid`、`compileType` 和 `app.json`；
+7. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`。
 
 随后 Agent 调用微信开发者工具：
 

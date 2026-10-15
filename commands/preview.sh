@@ -24,9 +24,34 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
-    echo "❌ 错误：工作区存在未提交修改，请先 commit 或 stash"
-    git status --short
+is_generated_path() {
+    case "$1" in
+        src/common/router.config.js|src/pages.json|src/manifest.json|src/template.h5.html|src/config/*|src/common/store/business/*|build-target/*|dist/*|unpackage/*|*/.builder-hook-context.json|.builder-hook-context.json)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+BLOCKED_CHANGES=()
+while IFS= read -r changed_path; do
+    [ -z "$changed_path" ] && continue
+    if ! is_generated_path "$changed_path"; then
+        BLOCKED_CHANGES+=("$changed_path")
+    fi
+done < <(
+    {
+        git diff --name-only --diff-filter=ACDMRTUXB
+        git diff --cached --name-only --diff-filter=ACDMRTUXB
+        git ls-files --others --exclude-standard
+    } | sort -u
+)
+
+if [ "${#BLOCKED_CHANGES[@]}" -gt 0 ]; then
+    echo "❌ 错误：工作区存在未提交的业务代码修改，请先 commit 或 stash"
+    printf '%s\n' "${BLOCKED_CHANGES[@]}"
     exit 1
 fi
 
