@@ -1,6 +1,6 @@
 ---
 name: mp-version-control
-version: 0.2.7
+version: 0.2.8
 description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，自动从微信开发者工具获取动态 APPID 与开发者昵称并发送个人开发版本构建通知，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
 ---
 
@@ -82,7 +82,10 @@ description: 微信小程序版本控制与预览发布。创建 release 分支�
 2. 使用当前 Skill frontmatter 的版本，不硬编码版本；
 3. 确认微信开发者工具已登录且版本匹配；
 4. `tokenRequired` 时使用用户从「设置 → 安全」复制的 Token；
-5. 工具返回 `pending + taskId` 时遵循微信 Skill 的异步任务规则，不重复提交写操作。
+5. 用 `project_list(scope=miniprogram)` 按 `PREVIEW_PROJECT` 完整路径匹配当前项目，从返回的 `appId` 读取动态 APPID；
+6. 用首次状态检查返回的 `loginUser.nickName` 作为通知中的开发者名称；
+7. 动态 APPID 或开发者昵称缺失时停止通知，不读取 `project.config.json.appid`，也不使用占位值；
+8. 工具返回 `pending + taskId` 时遵循微信 Skill 的异步任务规则，不重复提交写操作。
 
 ## Workflow：setup
 
@@ -212,7 +215,7 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 - `compileType` 为 `miniprogram`；
 - `app.json` 存在且有首个页面。
 
-构建脚本不读取 `project.config.json.appid`。APPID 必须从微信开发者工具项目元数据动态获取。
+构建脚本只校验构建产物结构，不读取 `project.config.json.appid` 作为通知来源。
 
 脚本输出：
 
@@ -223,20 +226,19 @@ PREVIEW_BRANCH
 PREVIEW_PROJECT
 PREVIEW_PAGE
 ```
-### 微信开发者工具操作
 
-拿到 `PREVIEW_PROJECT` 和 `PREVIEW_PAGE` 后，按当前 `wechatide-skill` 文档调用：
+随后按以下顺序调用微信开发者工具：
 
-1. `open_project_window`，项目路径为 `PREVIEW_PROJECT`；
-2. `project_list(scope=miniprogram)`，按完整路径匹配 `PREVIEW_PROJECT`，从返回项目元数据的 `appId` 获取动态 APPID，并保存为 `PREVIEW_APPID`；
-3. 如果找不到匹配项目或 `appId` 为空，停止通知并报告无法从微信开发者工具获取 APPID，不得回退读取 `project.config.json`；
-4. `simulator_open_page`，页面为 `PREVIEW_PAGE`；
-5. 编译并检查实际结果；
-6. `create_preview_qrcode`，使用 `qr-format=image` 和本地 `qr-output`，以获得**开发者预览二维码**；
-7. 编译失败或二维码生成失败时，不发送成功通知，也不要继续上传；
-8. 二维码生成成功后，自动发送构建通知；
-9. 当前任务明确要求上传时，调用 `upload`；否则保留等待用户明确要求上传；
-10. 当前任务不上传时，在构建通知发送完成后关闭窗口；需要上传时，在二维码生成失败、上传完成、明确失败，或用户处理完 `pending` 后，关闭微信开发者工具项目预览窗口。
+1. `check_wechatide_status`：会话首次调用一次，确认登录、版本关系和 `loginUser.nickName`；
+2. `open_project_window(project=PREVIEW_PROJECT)`：只加载 `dist/<env>/mp-weixin`，不要加载源码根目录；
+3. `project_list(scope=miniprogram)`：按完整路径匹配 `PREVIEW_PROJECT`，读取匹配项目返回的 `appId` 作为 `PREVIEW_APPID`；找不到项目或 `appId` 为空时停止，不回退到 `project.config.json`；
+4. `simulator_open_page(project=PREVIEW_PROJECT, page=PREVIEW_PAGE)`：触发编译并打开首页；
+5. 编译成功后调用 `create_preview_qrcode`，使用 `qr-format=image` 和本地 `qr-output`；
+6. 组装通知文字，使用动态 `PREVIEW_APPID` 和 `loginUser.nickName`，调用 `mp-cli.sh notice` 发送文字与二维码图片；
+7. 当前任务明确要求上传时调用 `upload`，只有明确成功后才发送上传成功通知；
+8. 不上传时在构建通知完成后关闭窗口；需要上传时在上传完成、明确失败或用户处理完 `pending` 后调用 `close_project_window`。
+
+任何编译、二维码、动态 APPID 或开发者昵称校验失败，都不得发送成功通知或继续上传。
 
 ### 预览二维码与体验版上传
 
@@ -367,6 +369,7 @@ bash ${SKILL_DIR}/mp-cli.sh tag [版本号]
 | 构建失败 | 不调用 wechatide，不发送成功通知，不上传 |
 | dist 产物不完整 | 停止并报告具体缺失文件 |
 | wechatide 编译失败 | 不生成成功二维码报告，不上传 |
-| 通知被跳过 | 继续后续步骤，但明确记录已跳过 |
-| 上传被拒绝/取消 | 不重试，不报告成功 |
+| 动态 APPID 或开发者昵称缺失 | 停止发送通知，不读取 `project.config.json.appid`，不使用占位值 |
+| 构建通知发送失败 | 报告真实失败，不伪造成功；按用户决定是否重试 |
+| 上传被拒绝、取消、超时或 `pending` | 不重试，不报告成功；按最终结果关闭项目窗口 |
 | `gh` 未登录 | 停止 merge，提示 `gh auth login` |

@@ -131,18 +131,22 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 4. 切换到 `release/vA.B.C` 并执行 fast-forward pull；
 5. 加载 NVM 并执行 `nvm use 18`，确认成功后才执行 pnpm 构建；
 6. 执行对应 pnpm 构建；
-7. 校验 `project.config.json`、`compileType` 和 `app.json`；不读取 `project.config.json.appid` 作为通知来源；
+7. 校验 `project.config.json`、`compileType` 和 `app.json` 的结构，但不读取 `project.config.json.appid` 作为通知来源；
 8. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`；
-9. Agent 调用 `project_list(scope=miniprogram)`，按完整路径匹配构建产物，从微信开发者工具返回的 `appId` 获取动态 APPID；如果没有匹配项目或 `appId` 为空，停止通知，不回退读取 `project.config.json`。
+9. 会话首次调用 `check_wechatide_status`，确认登录、版本关系和 `loginUser.nickName`；
+10. 调用 `project_list(scope=miniprogram)`，按完整路径匹配 `PREVIEW_PROJECT`，从微信开发者工具返回的 `appId` 获取动态 APPID；如果没有匹配项目或 `appId` 为空，停止通知，不回退读取 `project.config.json`。
 
 随后 Agent 调用微信开发者工具：
 
 ```text
+check_wechatide_status(skill-version=<当前 wechatide-skill 版本>)
 open_project_window(project=dist/<env>/mp-weixin)
+project_list(scope=miniprogram)
 simulator_open_page(project=dist/<env>/mp-weixin, page=<app.json 首页面>)
 create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<二维码图片路径>)
 ```
-这里生成的是**开发者预览二维码**，不是体验版二维码。二维码生成成功后自动发送构建通知，不再询问是否发送。
+
+这里生成的是**开发者预览二维码**，不是体验版二维码。只有动态 APPID、开发者昵称、编译和二维码都成功后，才自动发送构建通知；任一校验失败都不发送成功通知。
 
 ### 3. 构建完成后的企业微信通知
 
@@ -211,8 +215,8 @@ upload(
 
 ## 安全边界
 
-- 分支创建、构建和二维码生成可以自动执行。
-- 企业微信通知在两个节点分别询问：分支创建后、二维码生成后。
-- 体验版上传是写操作，必须获得用户明确要求和开发者工具确认。
+- 分支创建、构建、动态元数据读取和二维码生成可以自动执行；
+- 构建二维码生成成功后自动发送个人开发版本构建通知，不 @ 所有人；
+- 体验版上传是写操作，必须获得用户明确要求和开发者工具确认；只有明确上传成功后才发送上传成功通知；
 - 不自动发布正式版，不操作云数据库，不部署云函数。
 - `wechatide` 工具名和参数以当前安装的 `wechatide-skill` 为准。
