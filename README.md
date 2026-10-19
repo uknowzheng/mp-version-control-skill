@@ -146,6 +146,7 @@ create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<
 ### 3. 构建完成后的企业微信通知
 
 每次成功生成开发者预览二维码后，发送两条企业微信机器人消息：
+消息中的“开发者”必须使用会话首次 `check_wechatide_status` 返回的 `loginUser.nickName`，不得使用 `xxx` 或其他占位值；如果登录态没有昵称，应停止发送并报告原因。
 
 1. 文字消息（不 @ 所有人）：
 
