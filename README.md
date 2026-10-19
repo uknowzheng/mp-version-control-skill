@@ -65,11 +65,11 @@ npx skills add uknowzheng/mp-version-control-skill
 → pnpm run app:stg:mp-weixin
 → dist/stg/mp-weixin
 → wechatide 编译
-→ 生成二维码
-→ 询问是否发送构建通知
-→ 发送文字 + 二维码图片
-→ 用户明确要求后调用 wechatide upload
-→ 设置上传版本号 1.2.0
+→ 生成开发者预览二维码
+→ 自动发送构建通知（文字 + 二维码图片）
+→ 当前任务明确要求时调用 wechatide upload
+→ upload 明确成功后发送上传结果通知
+→ 关闭微信开发者工具项目预览窗口
 ```
 
 `prod` 复用同一打包流程，仅替换构建命令和产物目录：
@@ -141,34 +141,38 @@ open_project_window(project=dist/<env>/mp-weixin)
 simulator_open_page(project=dist/<env>/mp-weixin, page=<app.json 首页面>)
 create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<二维码图片路径>)
 ```
-这里生成的是**开发者预览二维码**，不是体验版二维码。生成成功后先询问是否发送构建通知；通知处理完成后，再询问是否上传体验版。
+这里生成的是**开发者预览二维码**，不是体验版二维码。二维码生成成功后自动发送构建通知，不再询问是否发送。
 
 ### 3. 构建完成后的企业微信通知
 
-生成二维码后，Skill 询问是否发送第二类通知。确认后发送：
+每次成功生成开发者预览二维码后，发送两条企业微信机器人消息：
 
-1. 版本、环境、分支和构建结果文字；
-2. 二维码图片消息。
+1. 文字消息：
+
+```text
+【微信小程序构建通知】
+环境：stg
+版本：1.2.0
+分支：release/v1.2.0
+二维码类型：开发者预览二维码
+说明：请开发者扫码验证
+构建产物：dist/stg/mp-weixin
+```
+
+2. 开发者预览二维码图片。
 
 调用方式：
 
 ```bash
 bash mp-cli.sh notice \
   1.2.0 \
-  "stg 包已构建完成，请扫码验证" \
+  $'【微信小程序构建通知】\n环境：stg\n版本：1.2.0\n分支：release/v1.2.0\n二维码类型：开发者预览二维码\n说明：请开发者扫码验证\n构建产物：dist/stg/mp-weixin' \
   "/tmp/mp-preview-1.2.0-stg.png"
 ```
 
-二维码通过企业微信机器人 `image` 消息发送，使用图片 Base64 和 MD5，不要求图片有公网 URL。
+二维码通过企业微信机器人 `image` 消息发送，使用图片 Base64 和 MD5，不要求图片有公网 URL。脚本先发文字，再发二维码；任一失败都会报告真实失败结果。
 
-`.notice` 文件格式：
-
-```text
-# 企业微信群机器人 webhook
-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
-```
-
-脚本会先发文字，再发二维码。任一发送失败都会报告失败，不会继续假装完成后续步骤。
+上传明确成功后，再发送“体验版 1.2.0 上传成功”的文字通知；上传 pending、超时、失败或取消时不得发送成功通知。
 
 ### 4. 上传体验版
 
@@ -184,7 +188,9 @@ upload(
 
 上传完成后只使用 `upload` 实际返回的体验版二维码路径、图片或 URL。当前微信 Skill 提供独立的预览二维码工具，但没有独立的体验版二维码工具；如果 `upload` 不返回体验版二维码，只报告上传成功，并说明需要从微信开发者工具或公众平台获取体验版二维码，不能把预览二维码改称为体验版二维码。
 
-上传中的授权确认或 `pending` 必须等待，不得自动重试。
+只有 `upload` 明确成功后，才发送“已调用微信开发者工具 upload，体验版 1.2.0 上传成功”的文字通知。上传中的授权确认或 `pending` 必须等待，不得自动重试；超时、失败或取消时不得发送成功通知。
+
+不上传时，在构建通知发送完成后关闭窗口；需要上传时，在二维码生成失败、上传完成、明确失败，或用户处理完 `pending` 后，调用 `close_project_window` 关闭本次打开的 `dist/<env>/mp-weixin` 项目窗口。
 
 ## 配置
 
