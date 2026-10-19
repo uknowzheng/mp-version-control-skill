@@ -1,7 +1,7 @@
 ---
 name: mp-version-control
-version: 0.2.4
-description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，自动发送企业微信构建通知，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
+version: 0.2.5
+description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，自动发送个人开发版本构建通知，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
 ---
 
 # 微信小程序版本控制
@@ -219,6 +219,7 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 PREVIEW_ENV
 PREVIEW_VERSION
 PREVIEW_BRANCH
+PREVIEW_APPID
 PREVIEW_PROJECT
 PREVIEW_PAGE
 ```
@@ -264,15 +265,16 @@ upload(
 
 开发者预览二维码生成成功后，自动发送两条企业微信机器人消息，不再询问是否发送：
 
-1. 文字消息，固定包含环境、版本、分支、构建产物和二维码用途：
+1. 文字消息，固定使用以下格式，不 @ 所有人：
 
 ```text
-【微信小程序构建通知】
+【微信小程序个人开发版本构建通知｜测试】
 环境：<env>
 版本：<版本号>
 分支：release/v<版本号>
-二维码类型：开发者预览二维码
-说明：请开发者扫码验证
+APPID：<本次构建产物 project.config.json 中的 appid>
+二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本
+开发者：<开发者微信名称>
 构建产物：dist/<env>/mp-weixin
 ```
 
@@ -283,11 +285,11 @@ upload(
 ```bash
 bash ${SKILL_DIR}/mp-cli.sh notice \
   <版本号> \
-  $'【微信小程序构建通知】\n环境：<env>\n版本：<版本号>\n分支：release/v<版本号>\n二维码类型：开发者预览二维码\n说明：请开发者扫码验证\n构建产物：dist/<env>/mp-weixin' \
+  $'【微信小程序个人开发版本构建通知｜测试】\n环境：<env>\n版本：<版本号>\n分支：release/v<版本号>\nAPPID：<本次构建产物 project.config.json 中的 appid>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/<env>/mp-weixin' \
   <二维码图片绝对路径>
 ```
 
-`notice.sh` 通过企业微信机器人 `image` 消息发送本地二维码的 Base64 和 MD5，不需要公网图片 URL。先发文字，后发图片；任一失败都必须报告真实失败结果。
+`notice.sh` 通过企业微信机器人 `image` 消息发送本地二维码的 Base64 和 MD5，不需要公网图片 URL。文字消息不再携带 `mentioned_list`，因此不会 @ 所有人；先发文字，后发二维码图片；任一失败都必须报告真实失败结果。
 
 `upload` 明确成功后，再发送一条文字消息：
 

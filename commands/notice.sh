@@ -43,14 +43,14 @@ fi
 
 build_text_payload() {
     if command -v jq >/dev/null 2>&1; then
-        jq -n --arg msg "$MESSAGE" '{msgtype:"text",text:{content:$msg,mentioned_list:["@all"]}}'
+        jq -n --arg msg "$MESSAGE" '{msgtype:"text",text:{content:$msg}}'
     elif command -v python3 >/dev/null 2>&1; then
         python3 - "$MESSAGE" <<'PY'
 import json
 import sys
 print(json.dumps({
     'msgtype': 'text',
-    'text': {'content': sys.argv[1], 'mentioned_list': ['@all']}
+    'text': {'content': sys.argv[1]},
 }, ensure_ascii=False))
 PY
     else

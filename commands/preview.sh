@@ -127,10 +127,17 @@ const app = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 process.stdout.write(app.pages[0]);
 NODE
 )"
+APPID="$(node - "$CONFIG_PATH" <<'NODE'
+const fs = require('fs');
+const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(config.appid);
+NODE
+)"
 
 printf '\n✅ 微信小程序构建完成\n'
 printf 'PREVIEW_ENV=%s\n' "$ENV_NAME"
 printf 'PREVIEW_VERSION=%s\n' "$VERSION"
 printf 'PREVIEW_BRANCH=%s\n' "$BRANCH_NAME"
+printf 'PREVIEW_APPID=%s\n' "$APPID"
 printf 'PREVIEW_PROJECT=%s\n' "$PROJECT_PATH"
 printf 'PREVIEW_PAGE=%s\n' "$ENTRY_PAGE"

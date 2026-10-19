@@ -132,7 +132,7 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 5. 加载 NVM 并执行 `nvm use 18`，确认成功后才执行 pnpm 构建；
 6. 执行对应 pnpm 构建；
 7. 校验 `project.config.json`、有效 `appid`、`compileType` 和 `app.json`；
-8. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`。
+8. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE`、`PREVIEW_APPID` 等结果供 Agent 交给 `wechatide-skill`。
 
 随后 Agent 调用微信开发者工具：
 
@@ -147,15 +147,16 @@ create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<
 
 每次成功生成开发者预览二维码后，发送两条企业微信机器人消息：
 
-1. 文字消息：
+1. 文字消息（不 @ 所有人）：
 
 ```text
-【微信小程序构建通知】
+【微信小程序个人开发版本构建通知｜测试】
 环境：stg
 版本：1.2.0
 分支：release/v1.2.0
-二维码类型：开发者预览二维码
-说明：请开发者扫码验证
+APPID：<本次构建产物 project.config.json 中的 appid>
+二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本
+开发者：<开发者微信名称>
 构建产物：dist/stg/mp-weixin
 ```
 
@@ -166,11 +167,11 @@ create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<
 ```bash
 bash mp-cli.sh notice \
   1.2.0 \
-  $'【微信小程序构建通知】\n环境：stg\n版本：1.2.0\n分支：release/v1.2.0\n二维码类型：开发者预览二维码\n说明：请开发者扫码验证\n构建产物：dist/stg/mp-weixin' \
+  $'【微信小程序个人开发版本构建通知｜测试】\n环境：stg\n版本：1.2.0\n分支：release/v1.2.0\nAPPID：<本次构建产物 project.config.json 中的 appid>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/stg/mp-weixin' \
   "/tmp/mp-preview-1.2.0-stg.png"
 ```
 
-二维码通过企业微信机器人 `image` 消息发送，使用图片 Base64 和 MD5，不要求图片有公网 URL。脚本先发文字，再发二维码；任一失败都会报告真实失败结果。
+二维码通过企业微信机器人 `image` 消息发送，使用图片 Base64 和 MD5，不要求图片有公网 URL。文字消息不带 `mentioned_list`，因此不会 @ 所有人；脚本先发文字，再发二维码图片；任一失败都会报告真实失败结果。
 
 上传明确成功后，再发送“体验版 1.2.0 上传成功”的文字通知；上传 pending、超时、失败或取消时不得发送成功通知。
 
