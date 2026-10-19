@@ -131,8 +131,9 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 4. 切换到 `release/vA.B.C` 并执行 fast-forward pull；
 5. 加载 NVM 并执行 `nvm use 18`，确认成功后才执行 pnpm 构建；
 6. 执行对应 pnpm 构建；
-7. 校验 `project.config.json`、有效 `appid`、`compileType` 和 `app.json`；
-8. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE`、`PREVIEW_APPID` 等结果供 Agent 交给 `wechatide-skill`。
+7. 校验 `project.config.json`、`compileType` 和 `app.json`；不读取 `project.config.json.appid` 作为通知来源；
+8. 输出 `PREVIEW_PROJECT`、`PREVIEW_PAGE` 等结果供 Agent 交给 `wechatide-skill`；
+9. Agent 调用 `project_list(scope=miniprogram)`，按完整路径匹配构建产物，从微信开发者工具返回的 `appId` 获取动态 APPID；如果没有匹配项目或 `appId` 为空，停止通知，不回退读取 `project.config.json`。
 
 随后 Agent 调用微信开发者工具：
 
@@ -155,7 +156,7 @@ create_preview_qrcode(project=dist/<env>/mp-weixin, qr-format=image, qr-output=<
 环境：stg
 版本：1.2.0
 分支：release/v1.2.0
-APPID：<本次构建产物 project.config.json 中的 appid>
+APPID：<微信开发者工具 project_list 返回的 PREVIEW_APPID>
 二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本
 开发者：<开发者微信名称>
 构建产物：dist/stg/mp-weixin
@@ -168,7 +169,7 @@ APPID：<本次构建产物 project.config.json 中的 appid>
 ```bash
 bash mp-cli.sh notice \
   1.2.0 \
-  $'【微信小程序个人开发版本构建通知｜测试】\n环境：stg\n版本：1.2.0\n分支：release/v1.2.0\nAPPID：<本次构建产物 project.config.json 中的 appid>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/stg/mp-weixin' \
+  $'【微信小程序个人开发版本构建通知｜测试】\n环境：stg\n版本：1.2.0\n分支：release/v1.2.0\nAPPID：<微信开发者工具 project_list 返回的 PREVIEW_APPID>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/stg/mp-weixin' \
   "/tmp/mp-preview-1.2.0-stg.png"
 ```
 

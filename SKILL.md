@@ -1,7 +1,7 @@
 ---
 name: mp-version-control
-version: 0.2.6
-description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，自动发送包含真实开发者昵称与 APPID 的个人开发版本构建通知，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
+version: 0.2.7
+description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，自动从微信开发者工具获取动态 APPID 与开发者昵称并发送个人开发版本构建通知，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
 ---
 
 # 微信小程序版本控制
@@ -209,9 +209,10 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 
 - `dist/<env>/mp-weixin` 存在；
 - `project.config.json` 存在；
-- `project.config.json.appid` 非空且不是 `touristappid`；
 - `compileType` 为 `miniprogram`；
 - `app.json` 存在且有首个页面。
+
+构建脚本不读取 `project.config.json.appid`。APPID 必须从微信开发者工具项目元数据动态获取。
 
 脚本输出：
 
@@ -219,23 +220,23 @@ prod → pnpm run app:prod:mp-weixin → dist/prod/mp-weixin
 PREVIEW_ENV
 PREVIEW_VERSION
 PREVIEW_BRANCH
-PREVIEW_APPID
 PREVIEW_PROJECT
 PREVIEW_PAGE
 ```
-
 ### 微信开发者工具操作
 
 拿到 `PREVIEW_PROJECT` 和 `PREVIEW_PAGE` 后，按当前 `wechatide-skill` 文档调用：
 
 1. `open_project_window`，项目路径为 `PREVIEW_PROJECT`；
-2. `simulator_open_page`，页面为 `PREVIEW_PAGE`；
-3. 编译并检查实际结果；
-4. `create_preview_qrcode`，使用 `qr-format=image` 和本地 `qr-output`，以获得**开发者预览二维码**；
-5. 编译失败或二维码生成失败时，不发送成功通知，也不要继续上传；
-6. 二维码生成成功后，自动发送构建通知；
-7. 当前任务明确要求上传时，调用 `upload`；否则保留等待用户明确要求上传；
-8. 当前任务不上传时，在构建通知发送完成后关闭窗口；需要上传时，在二维码生成失败、上传完成、明确失败，或用户处理完 `pending` 后，关闭微信开发者工具项目预览窗口。
+2. `project_list(scope=miniprogram)`，按完整路径匹配 `PREVIEW_PROJECT`，从返回项目元数据的 `appId` 获取动态 APPID，并保存为 `PREVIEW_APPID`；
+3. 如果找不到匹配项目或 `appId` 为空，停止通知并报告无法从微信开发者工具获取 APPID，不得回退读取 `project.config.json`；
+4. `simulator_open_page`，页面为 `PREVIEW_PAGE`；
+5. 编译并检查实际结果；
+6. `create_preview_qrcode`，使用 `qr-format=image` 和本地 `qr-output`，以获得**开发者预览二维码**；
+7. 编译失败或二维码生成失败时，不发送成功通知，也不要继续上传；
+8. 二维码生成成功后，自动发送构建通知；
+9. 当前任务明确要求上传时，调用 `upload`；否则保留等待用户明确要求上传；
+10. 当前任务不上传时，在构建通知发送完成后关闭窗口；需要上传时，在二维码生成失败、上传完成、明确失败，或用户处理完 `pending` 后，关闭微信开发者工具项目预览窗口。
 
 ### 预览二维码与体验版上传
 
@@ -272,7 +273,7 @@ upload(
 环境：<env>
 版本：<版本号>
 分支：release/v<版本号>
-APPID：<本次构建产物 project.config.json 中的 appid>
+APPID：<PREVIEW_APPID，由微信开发者工具 project_list 返回>
 二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本
 开发者：<开发者微信名称>
 构建产物：dist/<env>/mp-weixin
@@ -285,7 +286,7 @@ APPID：<本次构建产物 project.config.json 中的 appid>
 ```bash
 bash ${SKILL_DIR}/mp-cli.sh notice \
   <版本号> \
-  $'【微信小程序个人开发版本构建通知｜测试】\n环境：<env>\n版本：<版本号>\n分支：release/v<版本号>\nAPPID：<本次构建产物 project.config.json 中的 appid>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/<env>/mp-weixin' \
+  $'【微信小程序个人开发版本构建通知｜测试】\n环境：<env>\n版本：<版本号>\n分支：release/v<版本号>\nAPPID：<PREVIEW_APPID，由微信开发者工具 project_list 返回>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/<env>/mp-weixin' \
   <二维码图片绝对路径>
 ```
 

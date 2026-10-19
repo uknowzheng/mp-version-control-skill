@@ -113,24 +113,17 @@ const fs = require('fs');
 const [configPath, appPath] = process.argv.slice(2);
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const app = JSON.parse(fs.readFileSync(appPath, 'utf8'));
-if (!config.appid || config.appid === 'touristappid' || config.compileType !== 'miniprogram') {
-  throw new Error('project.config.json 缺少有效 appid 或 compileType 不是 miniprogram');
+if (config.compileType !== 'miniprogram') {
+  throw new Error('project.config.json 的 compileType 不是 miniprogram');
 }
 if (!Array.isArray(app.pages) || !app.pages[0]) {
   throw new Error('app.json 缺少首个页面路径');
 }
 NODE
-
 ENTRY_PAGE="$(node - "$APP_PATH" <<'NODE'
 const fs = require('fs');
 const app = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 process.stdout.write(app.pages[0]);
-NODE
-)"
-APPID="$(node - "$CONFIG_PATH" <<'NODE'
-const fs = require('fs');
-const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-process.stdout.write(config.appid);
 NODE
 )"
 
@@ -138,6 +131,5 @@ printf '\n✅ 微信小程序构建完成\n'
 printf 'PREVIEW_ENV=%s\n' "$ENV_NAME"
 printf 'PREVIEW_VERSION=%s\n' "$VERSION"
 printf 'PREVIEW_BRANCH=%s\n' "$BRANCH_NAME"
-printf 'PREVIEW_APPID=%s\n' "$APPID"
 printf 'PREVIEW_PROJECT=%s\n' "$PROJECT_PATH"
 printf 'PREVIEW_PAGE=%s\n' "$ENTRY_PAGE"
