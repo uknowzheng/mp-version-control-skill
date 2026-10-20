@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
 # notice.sh
-# 用途：通过企业微信 webhook 群机器人发送版本通知，可附带二维码图片
-# 用法：bash notice.sh <版本号> "<通知内容>" [二维码图片路径]
+# 用途：按通知场景通过企业微信 webhook 发送版本通知，可附带二维码图片
+# 用法：bash notice.sh <checkbranch|release> <版本号> "<通知内容>" [二维码图片路径]
 
 set -euo pipefail
 
-VERSION="${1:-}"
-MESSAGE="${2:-}"
-QR_PATH="${3:-}"
+NOTICE_SCENE="${1:-}"
+VERSION="${2:-}"
+MESSAGE="${3:-}"
+QR_PATH="${4:-}"
+
+if [[ "$NOTICE_SCENE" != "checkbranch" && "$NOTICE_SCENE" != "release" ]]; then
+    echo "❌ 错误：通知场景必须是 checkbranch 或 release"
+    echo "用法：bash notice.sh <checkbranch|release> <版本号> \"<通知内容>\" [二维码图片路径]"
+    exit 1
+fi
 
 if [ -z "$VERSION" ] || [ -z "$MESSAGE" ]; then
     echo "❌ 错误：参数不完整"
-    echo "用法：bash notice.sh <版本号> \"<通知内容>\" [二维码图片路径]"
+    echo "用法：bash notice.sh <checkbranch|release> <版本号> \"<通知内容>\" [二维码图片路径]"
     exit 1
 fi
 
@@ -20,7 +27,12 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-NOTICE_FILE="./.notice"
+if [ "$NOTICE_SCENE" = "checkbranch" ] && [ -n "$QR_PATH" ]; then
+    echo "❌ 错误：checkbranch 通知不支持二维码图片"
+    exit 1
+fi
+
+NOTICE_FILE="./.notice.${NOTICE_SCENE}"
 WEBHOOK_URL=""
 
 if [ -f "$NOTICE_FILE" ]; then
@@ -35,8 +47,8 @@ if [ -f "$NOTICE_FILE" ]; then
 fi
 
 if [ -z "$WEBHOOK_URL" ]; then
-    echo "❌ 错误：未找到 webhook URL"
-    echo "请在项目根目录创建 .notice 文件，内容为企业微信 webhook 地址"
+    echo "❌ 错误：未找到 ${NOTICE_SCENE} webhook URL"
+    echo "请在项目根目录创建 ${NOTICE_FILE}，内容为企业微信 webhook 地址"
     echo "示例：https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY"
     exit 1
 fi

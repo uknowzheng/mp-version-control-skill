@@ -13,19 +13,18 @@ show_help() {
     echo "用法：bash mp-cli.sh <command> [args...]"
     echo ""
     echo "可用命令："
-    echo "  setup                         检查 GitHub CLI"
-    echo "  init [项目路径]                初始化 .mp-release.json"
     echo "  release <版本号>               创建 release/vA.B.C 分支"
     echo "  preview <stg|prod> <版本号>    拉取 release 分支并构建微信小程序"
-    echo "  notice <版本号> \"<内容>\" [二维码路径] 发送企业微信通知"
+    echo "  notice <checkbranch|release> <版本号> \"<内容>\" [二维码路径] 发送场景通知"
     echo "  merge [版本号]                 创建 PR 合并到主干"
     echo "  tag [版本号]                   在主干上打 vA.B.C 标签"
-    echo "  help                           显示此帮助信息"
+    echo "  help                           显示帮助信息"
     echo ""
     echo "示例："
     echo "  bash mp-cli.sh release 1.2.0"
     echo "  bash mp-cli.sh preview stg 1.2.0"
-    echo "  bash mp-cli.sh notice 1.2.0 \"stg 包已构建\" /tmp/qr.png"
+    echo "  bash mp-cli.sh notice checkbranch 1.2.0 \"请将需求合入 release 分支\""
+    echo "  bash mp-cli.sh notice release 1.2.0 \"stg 包已构建\" /tmp/qr.png"
     echo "  bash mp-cli.sh merge 1.2.0"
     echo "  bash mp-cli.sh tag 1.2.0"
 }
@@ -34,12 +33,6 @@ COMMAND="${1:-help}"
 shift || true
 
 case "$COMMAND" in
-    setup)
-        bash "${CMD_DIR}/setup.sh" "$@"
-        ;;
-    init)
-        bash "${CMD_DIR}/init.sh" "$@"
-        ;;
     release)
         bash "${CMD_DIR}/release.sh" "$@"
         ;;

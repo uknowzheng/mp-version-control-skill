@@ -31,11 +31,9 @@ npx skills add uknowzheng/mp-version-control-skill
 
 | 命令 | 用途 | 示例 |
 |---|---|---|
-| `/mp-version-setup` | 检查 GitHub CLI | `/mp-version-setup` |
-| `/mp-version-init` | 初始化 Git 配置 | `/mp-version-init` |
-| `/mp-version-release` | 创建并推送 release 分支 | `/mp-version-release 1.2.0` |
-| `/mp-version-preview` | 拉取 release 分支并打 stg/prod 测试包 | `/mp-version-preview stg 1.2.0` |
-| `/mp-version-notice` | 手动发送企业微信通知 | `/mp-version-notice 1.2.0` |
+| `/mp-version-release` | 创建并推送 release 分支，并可发送 checkbranch 通知 | `/mp-version-release 1.2.0` |
+| `/mp-version-preview` | 拉取 release 分支并打 stg/prod 测试包，发送 release 通知 | `/mp-version-preview stg 1.2.0` |
+| `/mp-version-notice` | 按场景手动发送企业微信通知 | `/mp-version-notice release 1.2.0` |
 | `/mp-version-merge` | 创建 release → 主干 PR | `/mp-version-merge 1.2.0` |
 | `/mp-version-tag` | 在主干创建并推送版本 tag | `/mp-version-tag 1.2.0` |
 
@@ -43,13 +41,12 @@ npx skills add uknowzheng/mp-version-control-skill
 
 ### 版本分支拉取工作流
 
-这一步只负责创建版本分支并通知团队：
+这一步只负责创建版本分支，并使用 `checkbranch` webhook 通知所有人进行分支集成：
 
 ```text
 /mp-version-release 1.2.0
 → 创建并推送 release/v1.2.0
-→ 询问是否发送分支通知
-→ （确认后发送企业微信分支通知）
+→ 使用 .notice.checkbranch 发送分支集成通知
 ```
 
 该工作流不构建小程序，也不调用 `wechatide`。
@@ -101,13 +98,13 @@ bash mp-cli.sh release 1.2.0
 release/v1.2.0
 ```
 
-脚本完成后会切回主分支。Skill 随后询问是否发送第一类企业微信通知：
+脚本完成后会切回主分支。随后使用 `.notice.checkbranch` 发送：
 
 ```text
-版本 1.2.0 的 release/v1.2.0 分支已创建，请将需求代码合入该分支。
+小程序版本 1.2.0，release/v1.2.0 分支已创建，请将本版需求合入该分支。
 ```
 
-确认发送后调用 `notice`，这条通知不附带二维码。
+这条通知不附带二维码，目标是通知所有人开始分支集成。
 
 ### 2. 打测试包
 
@@ -168,10 +165,10 @@ APPID：<微信开发者工具 project_list 返回的 PREVIEW_APPID>
 
 2. 开发者预览二维码图片。
 
-调用方式：
+调用方式：使用 `release` webhook：
 
 ```bash
-bash mp-cli.sh notice \
+bash mp-cli.sh notice release \
   1.2.0 \
   $'【微信小程序个人开发版本构建通知｜测试】\n环境：stg\n版本：1.2.0\n分支：release/v1.2.0\nAPPID：<微信开发者工具 project_list 返回的 PREVIEW_APPID>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/stg/mp-weixin' \
   "/tmp/mp-preview-1.2.0-stg.png"
@@ -201,17 +198,27 @@ upload(
 
 ## 配置
 
-`.mp-release.json` 只保存可公开的 GitHub Enterprise 域名配置：
+企业微信通知使用两个相互独立的本地 webhook 文件：
 
-```json
-{
-  "git": {
-    "hostname": ""
-  }
-}
+```text
+.notice.checkbranch  # release 分支创建后，通知所有人进行分支集成
+.notice.release      # 本地完成 stg/prod 出包后，通知开发者本人
 ```
 
-不要将 AppID 私钥、企业微信 webhook 或其他凭据提交到 Git。`.notice` 和本地敏感配置应加入 `.gitignore`。
+每个文件只放一条 webhook URL，例如：
+
+```text
+https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
+```
+
+手动发送通知时，必须显式指定场景：
+
+```bash
+bash mp-cli.sh notice checkbranch <版本号> "请将需求合入 release 分支"
+bash mp-cli.sh notice release <版本号> "stg 包已构建完成" <二维码图片路径>
+```
+
+`.notice.checkbranch`、`.notice.release`、二维码和其他凭据不能提交到 Git，必须加入 `.gitignore` 或本机 Git exclude。
 
 ## 安全边界
 

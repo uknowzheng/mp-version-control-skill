@@ -8,24 +8,6 @@ set -e
 
 VERSION="$1"
 
-# 0. 读取 GitHub 企业版域名（若配置了）
-GH_HOSTNAME=""
-CONFIG_FILE="./.mp-release.json"
-if [ -f "$CONFIG_FILE" ]; then
-    if command -v jq >/dev/null 2>&1; then
-        GH_HOSTNAME="$(jq -r '.git.hostname // ""' "$CONFIG_FILE" 2>/dev/null)"
-    elif command -v python3 >/dev/null 2>&1; then
-        GH_HOSTNAME="$(python3 -c "
-import json, sys
-try:
-    with open('$CONFIG_FILE', 'r') as f:
-        data = json.load(f)
-    print(data.get('git', {}).get('hostname', '') or '')
-except:
-    print('')
-" 2>/dev/null)"
-    fi
-fi
 
 # 1. 如果未传版本号，从当前分支名解析
 # 当前分支必须是 release/vX.Y.Z 格式
@@ -71,20 +53,9 @@ if ! command -v gh >/dev/null 2>&1; then
     exit 1
 fi
 
-# 6. 检查 gh 认证状态
-GH_HOST_FLAG=()
-if [ -n "$GH_HOSTNAME" ]; then
-    GH_HOST_FLAG=(--hostname "$GH_HOSTNAME")
-    echo "🏢 使用 GitHub Enterprise：${GH_HOSTNAME}"
-fi
-
-if ! gh auth status "${GH_HOST_FLAG[@]}" >/dev/null 2>&1; then
+if ! gh auth status >/dev/null 2>&1; then
     echo "❌ GitHub CLI 未登录"
-    if [ -n "$GH_HOSTNAME" ]; then
-        echo "请先执行：gh auth login --hostname ${GH_HOSTNAME}"
-    else
-        echo "请先执行：gh auth login"
-    fi
+    echo "请先执行：gh auth login"
     exit 1
 fi
 

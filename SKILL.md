@@ -1,7 +1,7 @@
 ---
 name: mp-version-control
-version: 0.2.8
-description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，自动从微信开发者工具获取动态 APPID 与开发者昵称并发送个人开发版本构建通知，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
+version: 0.2.9
+description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，按 checkbranch 与 release 场景使用独立企业微信 webhook 发送分支集成和本地出包通知，自动获取动态 APPID 与开发者昵称，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
 ---
 
 # 微信小程序版本控制
@@ -12,11 +12,9 @@ description: 微信小程序版本控制与预览发布。创建 release 分支�
 
 | 命令 | Workflow |
 |---|---|
-| `/mp-version-setup` | 检查 GitHub CLI |
-| `/mp-version-init` | 生成 `.mp-release.json` |
-| `/mp-version-release <version>` | 创建并推送 `release/v<version>` |
-| `/mp-version-preview <stg|prod> <version>` | 拉取 release 分支并打微信测试包 |
-| `/mp-version-notice <version>` | 手动发送企业微信通知 |
+| `/mp-version-release <version>` | 创建并推送 `release/v<version>`，发送 checkbranch 分支集成通知 |
+| `/mp-version-preview <stg|prod> <version>` | 拉取 release 分支、打微信测试包并发送 release 出包通知 |
+| `/mp-version-notice <checkbranch|release> <version>` | 按场景手动发送企业微信通知 |
 | `/mp-version-merge [version]` | 创建 release → 主干 PR |
 | `/mp-version-tag [version]` | 在主干创建并推送 tag |
 
@@ -87,31 +85,6 @@ description: 微信小程序版本控制与预览发布。创建 release 分支�
 7. 动态 APPID 或开发者昵称缺失时停止通知，不读取 `project.config.json.appid`，也不使用占位值；
 8. 工具返回 `pending + taskId` 时遵循微信 Skill 的异步任务规则，不重复提交写操作。
 
-## Workflow：setup
-
-```bash
-bash ${SKILL_DIR}/mp-cli.sh setup
-```
-
-只检查 GitHub CLI。微信开发者工具由 `wechatide-skill` 管理。
-
-## Workflow：init
-
-```bash
-bash ${SKILL_DIR}/mp-cli.sh init <项目路径>
-```
-
-生成：
-
-```json
-{
-  "git": {
-    "hostname": ""
-  }
-}
-```
-
-`hostname` 为空表示 github.com；企业版填写不带协议的域名。
 
 ## Workflow：release
 
@@ -138,15 +111,15 @@ bash ${SKILL_DIR}/mp-cli.sh release <版本号>
 5. 创建并推送 `release/v<版本号>`；
 6. 切回主分支。
 
-### 第一类企业微信通知
+### checkbranch 企业微信通知
 
-分支创建成功后，必须询问：
+分支创建成功后，询问：
 
 ```text
-release/v<version> 已创建，是否发送企业微信通知？
+release/v<version> 已创建，是否使用 checkbranch webhook 通知所有人进行分支集成？
 ```
 
-确认后组装并发送文字通知，例如：
+确认后使用 `.notice.checkbranch` 发送文字通知：
 
 ```text
 小程序版本 1.2.0，release/v1.2.0 分支已创建，请将本版需求合入该分支。
@@ -155,12 +128,12 @@ release/v<version> 已创建，是否发送企业微信通知？
 调用：
 
 ```bash
-bash ${SKILL_DIR}/mp-cli.sh notice \
+bash ${SKILL_DIR}/mp-cli.sh notice checkbranch \
   <版本号> \
   "小程序版本 <版本号>，release/v<版本号> 分支已创建，请将本版需求合入该分支。"
 ```
 
-跳过通知不影响后续 `preview`。
+这条通知不附带二维码；跳过通知不影响后续 `preview`。
 
 ## Workflow：打测试包（preview）
 
@@ -286,7 +259,7 @@ APPID：<PREVIEW_APPID，由微信开发者工具 project_list 返回>
 调用：
 
 ```bash
-bash ${SKILL_DIR}/mp-cli.sh notice \
+bash ${SKILL_DIR}/mp-cli.sh notice release \
   <版本号> \
   $'【微信小程序个人开发版本构建通知｜测试】\n环境：<env>\n版本：<版本号>\n分支：release/v<版本号>\nAPPID：<PREVIEW_APPID，由微信开发者工具 project_list 返回>\n二维码类型：开发者预览二维码，5分钟内过期，请到小程序【开发者助手】- 选择小程序 - 版本查看 - 体验版列表 - 找到开发者的微信名称的版本\n开发者：<开发者微信名称>\n构建产物：dist/<env>/mp-weixin' \
   <二维码图片绝对路径>
@@ -330,19 +303,27 @@ upload(
 
 ## Workflow：notice
 
-手动通知：
+手动通知必须显式指定场景：
 
 ```bash
-bash ${SKILL_DIR}/mp-cli.sh notice <版本号> "<内容>" [二维码图片路径]
+bash ${SKILL_DIR}/mp-cli.sh notice checkbranch <版本号> "请将需求合入 release 分支"
+bash ${SKILL_DIR}/mp-cli.sh notice release <版本号> "stg 包已构建完成" <二维码图片路径>
 ```
 
-项目根目录需要 `.notice`：
+场景与配置文件对应关系：
+
+| 场景 | 配置文件 | 用途 |
+|---|---|---|
+| `checkbranch` | `.notice.checkbranch` | release 分支创建后，通知所有人进行分支集成 |
+| `release` | `.notice.release` | 本地完成 stg/prod 出包后，通知开发者本人，可附开发者预览二维码 |
+
+每个配置文件只放一条企业微信 webhook URL：
 
 ```text
 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
 ```
 
-`.notice`、二维码和其他凭据不能提交到 Git。
+两个配置文件、二维码和其他凭据不能提交到 Git，必须加入 `.gitignore` 或本机 Git exclude。
 
 ## Workflow：merge
 
