@@ -36,9 +36,7 @@ NOTICE_FILE="./.notice.${NOTICE_SCENE}"
 WEBHOOK_URL=""
 
 if [ -f "$NOTICE_FILE" ]; then
-    while IFS= read -r line; do
-        line="${line#${line%%[![:space:]]*}}"
-        line="${line%${line##*[![:space:]]}}"
+    while IFS= read -r line || [ -n "$line" ]; do
         if [ -n "$line" ] && [[ "$line" != \#* ]]; then
             WEBHOOK_URL="$line"
             break
@@ -55,15 +53,21 @@ fi
 
 build_text_payload() {
     if command -v jq >/dev/null 2>&1; then
-        jq -n --arg msg "$MESSAGE" '{msgtype:"text",text:{content:$msg}}'
+        if [ "$NOTICE_SCENE" = "checkbranch" ]; then
+            jq -n --arg msg "$MESSAGE" '{msgtype:"text",text:{content:$msg,mentioned_list:["@all"]}}'
+        else
+            jq -n --arg msg "$MESSAGE" '{msgtype:"text",text:{content:$msg}}'
+        fi
     elif command -v python3 >/dev/null 2>&1; then
-        python3 - "$MESSAGE" <<'PY'
+        python3 - "$NOTICE_SCENE" "$MESSAGE" <<'PY'
 import json
 import sys
-print(json.dumps({
-    'msgtype': 'text',
-    'text': {'content': sys.argv[1]},
-}, ensure_ascii=False))
+
+scene, message = sys.argv[1:]
+text = {'content': message}
+if scene == 'checkbranch':
+    text['mentioned_list'] = ['@all']
+print(json.dumps({'msgtype': 'text', 'text': text}, ensure_ascii=False))
 PY
     else
         echo "❌ 错误：发送通知需要 jq 或 python3"

@@ -31,8 +31,8 @@ npx skills add uknowzheng/mp-version-control-skill
 
 | 命令 | 用途 | 示例 |
 |---|---|---|
-| `/mp-version-release` | 创建并推送 release 分支，并可发送 checkbranch 通知 | `/mp-version-release 1.2.0` |
-| `/mp-version-preview` | 拉取 release 分支并打 stg/prod 测试包，发送 release 通知 | `/mp-version-preview stg 1.2.0` |
+| `/mp-version-release` | 创建并推送 release 分支，自动发送 checkbranch 通知 | `/mp-version-release 1.2.0` |
+| `/mp-version-preview` | 拉取 release 分支并打 stg/prod 测试包，自动发送 release 通知 | `/mp-version-preview stg 1.2.0` |
 | `/mp-version-notice` | 按场景手动发送企业微信通知 | `/mp-version-notice release 1.2.0` |
 | `/mp-version-merge` | 创建 release → 主干 PR | `/mp-version-merge 1.2.0` |
 | `/mp-version-tag` | 在主干创建并推送版本 tag | `/mp-version-tag 1.2.0` |
@@ -41,10 +41,13 @@ npx skills add uknowzheng/mp-version-control-skill
 
 ### 版本分支拉取工作流
 
-这一步只负责创建版本分支，并使用 `checkbranch` webhook 通知所有人进行分支集成：
+这一步负责创建版本分支，并使用 `checkbranch` webhook 通知所有人进行分支集成：
 
 ```text
 /mp-version-release 1.2.0
+→ 清理工作区：丢弃未提交修改，移除未跟踪文件（保留本地 webhook 配置）
+→ git fetch origin --prune
+→ checkout 主分支并重置为 origin/<主分支> 最新代码
 → 创建并推送 release/v1.2.0
 → 使用 .notice.checkbranch 发送分支集成通知
 ```
@@ -92,19 +95,19 @@ npx skills add uknowzheng/mp-version-control-skill
 bash mp-cli.sh release 1.2.0
 ```
 
-脚本会从 `master` 或 `main` 创建并推送：
+脚本会：
+
+1. 清理工作区：丢弃未提交修改，移除未跟踪文件；本地 `.notice`、`.notice.checkbranch`、`.notice.release` 会保留；
+2. `git fetch origin --prune`；
+3. 切换到 `master` 或 `main`，并重置为对应 `origin/<主分支>` 的最新代码；
+4. 创建并推送：
 
 ```text
 release/v1.2.0
 ```
 
-脚本完成后会切回主分支。随后使用 `.notice.checkbranch` 发送：
-
-```text
-小程序版本 1.2.0，release/v1.2.0 分支已创建，请将本版需求合入该分支。
-```
-
-这条通知不附带二维码，目标是通知所有人开始分支集成。
+5. 切回主分支；
+6. 使用 `.notice.checkbranch` 自动发送分支集成通知。该通知会 @ 所有人，不附带二维码。
 
 ### 2. 打测试包
 

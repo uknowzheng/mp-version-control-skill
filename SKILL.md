@@ -1,7 +1,7 @@
 ---
 name: mp-version-control
-version: 0.2.9
-description: 微信小程序版本控制与预览发布。创建 release 分支，构建 stg/prod 微信小程序，调用 wechatide-skill 加载 dist、编译、生成开发者预览二维码，按 checkbranch 与 release 场景使用独立企业微信 webhook 发送分支集成和本地出包通知，自动获取动态 APPID 与开发者昵称，按用户确认上传体验版并发送上传结果，关闭项目预览窗口，支持 PR 与 tag。
+version: 0.3.0
+description: 微信小程序版本控制与预览发布。创建 release 分支前清理工作区并同步远端最新主分支，创建后用 checkbranch webhook 通知分支集成；构建 stg/prod 后用 release webhook 通知开发者本人，调用 wechatide-skill 生成开发者预览二维码并按用户确认上传体验版，支持 PR 与 tag。
 ---
 
 # 微信小程序版本控制
@@ -24,13 +24,14 @@ description: 微信小程序版本控制与预览发布。创建 release 分支�
 
 ### 版本分支拉取工作流
 
-这一步只负责建立版本分支并通知团队：
+这一步负责建立版本分支并通知团队：
 
 ```text
 /mp-version-release 1.2.0
+→ 清理工作区并保留本地 webhook 配置
+→ 同步 origin/main 或 origin/master 最新代码
 → 创建并推送 release/v1.2.0
-→ 询问是否发送分支通知
-→ （确认后发送企业微信分支通知）
+→ 自动使用 .notice.checkbranch 通知所有人进行分支集成
 ```
 
 该工作流不构建小程序，也不调用 `wechatide`。
@@ -104,36 +105,28 @@ bash ${SKILL_DIR}/mp-cli.sh release <版本号>
 
 脚本会：
 
-1. 检查 Git 仓库和干净工作区；
-2. `git fetch origin --prune`；
-3. 检测 `master` 或 `main`；
-4. 同步主分支；
-5. 创建并推送 `release/v<版本号>`；
-6. 切回主分支。
+1. 检查 Git 仓库和 `.notice.checkbranch` 配置；
+2. 丢弃工作区未提交修改，移除未跟踪文件；保留本地 `.notice`、`.notice.checkbranch`、`.notice.release`；
+3. `git fetch origin --prune`；
+4. 检测 `master` 或 `main`；
+5. 切换到主分支并重置为对应 `origin/<主分支>` 的最新代码；
+6. 创建并推送 `release/v<版本号>`；
+7. 切回主分支；
+8. 使用 `.notice.checkbranch` 自动发送分支集成通知。
 
-### checkbranch 企业微信通知
-
-分支创建成功后，询问：
-
-```text
-release/v<version> 已创建，是否使用 checkbranch webhook 通知所有人进行分支集成？
-```
-
-确认后使用 `.notice.checkbranch` 发送文字通知：
+通知内容：
 
 ```text
 小程序版本 1.2.0，release/v1.2.0 分支已创建，请将本版需求合入该分支。
 ```
 
-调用：
+`checkbranch` 通知不附带二维码，并 @ 所有人。通知发送失败时，分支已经创建，需报告真实失败并可手动重发：
 
 ```bash
 bash ${SKILL_DIR}/mp-cli.sh notice checkbranch \
   <版本号> \
   "小程序版本 <版本号>，release/v<版本号> 分支已创建，请将本版需求合入该分支。"
 ```
-
-这条通知不附带二维码；跳过通知不影响后续 `preview`。
 
 ## Workflow：打测试包（preview）
 
@@ -265,9 +258,9 @@ bash ${SKILL_DIR}/mp-cli.sh notice release \
   <二维码图片绝对路径>
 ```
 
-`notice.sh` 通过企业微信机器人 `image` 消息发送本地二维码的 Base64 和 MD5，不需要公网图片 URL。文字消息不再携带 `mentioned_list`，因此不会 @ 所有人；先发文字，后发二维码图片；任一失败都必须报告真实失败结果。
+`notice.sh` 通过企业微信机器人 `image` 消息发送本地二维码的 Base64 和 MD5，不需要公网图片 URL。`checkbranch` 文字消息包含 `mentioned_list:["@all"]`，用于通知所有人；`release` 文字消息不包含 `mentioned_list`，不会 @ 所有人。两种场景都先发文字，后发二维码图片；任一失败都必须报告真实失败结果。
 
-`upload` 明确成功后，再发送一条文字消息：
+`upload` 明确成功后，再使用 `release` webhook 发送一条文字消息：
 
 ```text
 【微信小程序上传通知】
@@ -314,16 +307,10 @@ bash ${SKILL_DIR}/mp-cli.sh notice release <版本号> "stg 包已构建完成" 
 
 | 场景 | 配置文件 | 用途 |
 |---|---|---|
-| `checkbranch` | `.notice.checkbranch` | release 分支创建后，通知所有人进行分支集成 |
+| `checkbranch` | `.notice.checkbranch` | release 分支创建后，通知所有人进行分支集成，并 @ 所有人 |
 | `release` | `.notice.release` | 本地完成 stg/prod 出包后，通知开发者本人，可附开发者预览二维码 |
 
-每个配置文件只放一条企业微信 webhook URL：
-
-```text
-https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
-```
-
-两个配置文件、二维码和其他凭据不能提交到 Git，必须加入 `.gitignore` 或本机 Git exclude。
+每个配置文件只放一条企业微信 webhook URL。两个配置文件、二维码和其他凭据不能提交到 Git，必须加入 `.gitignore` 或本机 Git exclude。
 
 ## Workflow：merge
 
@@ -339,18 +326,19 @@ bash ${SKILL_DIR}/mp-cli.sh merge [版本号]
 bash ${SKILL_DIR}/mp-cli.sh tag [版本号]
 ```
 
-脚本同步主分支，创建并推送 `v<版本号>`。只有确认 PR 已合并后才执行。
+只有确认 release → 主干 PR 已合并后才执行。
 
 ## 错误处理
 
 | 情况 | 处理 |
 |---|---|
-| 工作区不干净 | 停止并报告文件，不自动 stash |
+| 缺少 `.notice.checkbranch` | 在清理工作区前停止，并报告配置文件路径 |
+| 工作区存在修改 | release 自动 `git reset --hard HEAD`，并执行 `git clean -fd`；保留三个本地通知配置文件 |
 | release 分支不存在 | 停止并报告，不猜测其他分支 |
 | 构建失败 | 不调用 wechatide，不发送成功通知，不上传 |
 | dist 产物不完整 | 停止并报告具体缺失文件 |
 | wechatide 编译失败 | 不生成成功二维码报告，不上传 |
 | 动态 APPID 或开发者昵称缺失 | 停止发送通知，不读取 `project.config.json.appid`，不使用占位值 |
-| 构建通知发送失败 | 报告真实失败，不伪造成功；按用户决定是否重试 |
+| 通知发送失败 | 报告真实失败，不伪造成功；分支或构建结果本身不回滚 |
 | 上传被拒绝、取消、超时或 `pending` | 不重试，不报告成功；按最终结果关闭项目窗口 |
 | `gh` 未登录 | 停止 merge，提示 `gh auth login` |
